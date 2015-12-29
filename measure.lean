@@ -5,7 +5,7 @@ structure sigma_algebra [class] (X : Type) :=
   (measurables : set (set X))
   (univ_measurable : univ ∈ measurables)
   (complements_measurable : ∀ S, S ∈ measurables → (-S ∈ measurables))
-  (sUnion_measurable : ∀ S, S ⊆ measurables → ⋃₀ S ∈ measurables)
+  (sUnion_measurable : ∀ {S : set (set X)}, S ⊆ measurables → ⋃₀ S ∈ measurables)
 
 attribute sigma_algebra.measurables [coercion]
 
@@ -13,23 +13,58 @@ namespace measure
 
 variable {X : Type}
 
-definition disjoint (S : set (set X)) : Prop := ∀₀ a ∈ S, ∀₀ b ∈ S, a ≠ b → a ∩ b = ∅
+definition disjoint (S : set (set X)) : Prop := ∀ a b, a ∈ S → b ∈ S → a ≠ b → a ∩ b = ∅
 
-theorem disjointI (S : set (set X)) : (∀ a b, a ∈ S → b ∈ S → a ≠ b → a ∩ b = ∅) → disjoint S := sorry
+theorem disjoint_empty : disjoint (∅ : set (set X)) := 
+take a b, assume H, !not.elim !not_mem_empty H
 
-theorem disjointD (S : set (set X)) : disjoint S → (∀ a b, a ∈ S → b ∈ S → a ≠ b → a ∩ b = ∅) := sorry
+theorem disjoint_union {s t : set (set X)} (Hs : disjoint s) (Ht : disjoint t) (H : ∀ x y, x ∈ s ∧ y ∈ t → x ∩ y = ∅):
+  disjoint (s ∪ t) := 
+take a b, assume Ha Hb Hneq, or.elim Ha
+ (assume H1, or.elim Hb
+   (suppose b ∈ s, (Hs a b) H1 this Hneq)
+   (suppose b ∈ t, (H a b) (and.intro H1 this)))
+ (assume H2, or.elim Hb
+   (suppose b ∈ s, !inter.comm ▸ ((H b a) (and.intro this H2)))
+   (suppose b ∈ t, (Ht a b) H2 this Hneq))
 
-theorem disjoint_empty : disjoint (∅ : set (set X)) := sorry
+theorem disjoint_singleton (s : set (set X)) : disjoint '{s} := 
+take a b, assume Ha Hb Hneq,
+!not.elim Hneq (eq.trans ((iff.elim_left !mem_singleton_iff) Ha) ((iff.elim_left !mem_singleton_iff) Hb)⁻¹)
 
-theorem disjoint_union {S T : set (set X)} (DS : disjoint S) (DT : disjoint T) : disjoint (S ∪ T) := sorry
+theorem measurable_univ {M : sigma_algebra X} : univ ∈ M := 
+sigma_algebra.univ_measurable X
 
-theorem disjoint_singleton (S : set (set X)) : disjoint '{S} := sorry
+theorem measurable_empty {M : sigma_algebra X} : ∅ ∈ M := 
+comp_univ ▸ !sigma_algebra.complements_measurable measurable_univ
 
-theorem measurable_sUnion {S : set (set X)} {M : sigma_algebra X} (H : ∀₀ a ∈ S, a ∈ M) : ⋃₀ S ∈ M := sorry
+theorem measurable_sUnion {s : set (set X)} {M : sigma_algebra X} (H : ∀₀ a ∈ s, a ∈ M) : ⋃₀ s ∈ M := 
+sigma_algebra.sUnion_measurable H
 
-theorem measurable_cUnion {S : ℕ → set X} {M : sigma_algebra X} (H : ∀ i, S i ∈ M) : (⋃ i, S i) ∈ M := sorry
+theorem measurable_sInter {s : set (set X)} {M : sigma_algebra X} (H : ∀₀ a ∈ s, a ∈ M) : ⋂₀ s ∈ M := 
+have ⋂₀ s = -(⋃₀ (complement '[s])) , from !sInter_eq_comp_sUnion_comp,
+have complement '[s] ⊆ M, from 
+  take x, assume H1,
+  obtain r (Hr : r ∈ s ∧ -r = x), from H1,
+  have -r ∈ M, from !sigma_algebra.complements_measurable (H (and.elim_left Hr)),
+  show _, from (and.elim_right Hr) ▸ this,
+have ⋃₀ (complement '[s]) ∈ M, from !sigma_algebra.sUnion_measurable this,
+have -(⋃₀ (complement '[s])) ∈ M, from !sigma_algebra.complements_measurable this,
+show _, from !sInter_eq_comp_sUnion_comp⁻¹ ▸ this
 
-theorem measurable_cInter {S : ℕ → set X} {M : sigma_algebra X} (H : ∀ i, S i ∈ M) : (⋂ i, S i) ∈ M := sorry
+theorem measurable_cUnion {s : ℕ → set X} {M : sigma_algebra X} (H : ∀ i, s i ∈ M) : (⋃ i, s i) ∈ M := 
+have ∀₀ t ∈ s '[univ], t ∈ M,
+  from take t, suppose t ∈ s '[univ],
+    obtain i [univi (Hi : s i = t)], from this,
+    show t ∈ M, by rewrite -Hi; exact H i,
+using this, by rewrite Union_eq_sUnion_image; apply measurable_sUnion this
+
+theorem measurable_cInter {s : ℕ → set X} {M : sigma_algebra X} (H : ∀ i, s i ∈ M) : (⋂ i, s i) ∈ M := 
+have ∀₀ t ∈ s '[univ], t ∈ M,
+  from take t, suppose t ∈ s '[univ],
+    obtain i [univi (Hi : s i = t)], from this,
+    show t ∈ M, by rewrite -Hi; exact H i,
+using this, by rewrite Inter_eq_sInter_image; apply measurable_sInter this
 
 private definition bin_ext (s t : set X) (n : ℕ) : set X :=
 nat.cases_on n s (λ m, t)
@@ -57,6 +92,5 @@ theorem measurable_sInter_of_finite {S : set (set X)} {M : sigma_algebra X} [fin
 theorem measurable_diff {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s \ t) ∈ M := sorry
 
 theorem measurable_insert {x : X} {s : set X} {M : sigma_algebra X} (Hx : '{x} ∈ M) (Hs : s ∈ M) : (insert x s) ∈ M := sorry
-
 
 end measure
