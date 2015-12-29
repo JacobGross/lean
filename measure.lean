@@ -18,7 +18,7 @@ definition disjoint (S : set (set X)) : Prop := ∀ a b, a ∈ S → b ∈ S →
 theorem disjoint_empty : disjoint (∅ : set (set X)) := 
 take a b, assume H, !not.elim !not_mem_empty H
 
-theorem disjoint_union {s t : set (set X)} (Hs : disjoint s) (Ht : disjoint t) (H : ∀ x y, x ∈ s ∧ y ∈ t → x ∩ y = ∅):
+theorem disjoint_union {s t : set (set X)} (Hs : disjoint s) (Ht : disjoint t) (H : ∀ x y, x ∈ s ∧ y ∈ t → x ∩ y = ∅) :
   disjoint (s ∪ t) := 
 take a b, assume Ha Hb Hneq, or.elim Ha
  (assume H1, or.elim Hb
@@ -44,13 +44,12 @@ sigma_algebra.sUnion_measurable H
 theorem measurable_sInter {s : set (set X)} {M : sigma_algebra X} (H : ∀₀ a ∈ s, a ∈ M) : ⋂₀ s ∈ M := 
 have ⋂₀ s = -(⋃₀ (complement '[s])) , from !sInter_eq_comp_sUnion_comp,
 have complement '[s] ⊆ M, from 
-  take x, assume H1,
-  obtain r (Hr : r ∈ s ∧ -r = x), from H1,
+  take x, suppose x ∈ complement '[s],
+  obtain r (Hr : r ∈ s ∧ -r = x), from this,
   have -r ∈ M, from !sigma_algebra.complements_measurable (H (and.elim_left Hr)),
   show _, from (and.elim_right Hr) ▸ this,
 have ⋃₀ (complement '[s]) ∈ M, from !sigma_algebra.sUnion_measurable this,
-have -(⋃₀ (complement '[s])) ∈ M, from !sigma_algebra.complements_measurable this,
-show _, from !sInter_eq_comp_sUnion_comp⁻¹ ▸ this
+!sInter_eq_comp_sUnion_comp⁻¹ ▸ (!sigma_algebra.complements_measurable this)
 
 theorem measurable_cUnion {s : ℕ → set X} {M : sigma_algebra X} (H : ∀ i, s i ∈ M) : (⋃ i, s i) ∈ M := 
 have ∀₀ t ∈ s '[univ], t ∈ M,
@@ -71,26 +70,32 @@ nat.cases_on n s (λ m, t)
 
 private lemma Union_bin_ext (s t : set X) : (⋃ i, bin_ext s t i) = s ∪ t :=
 ext (take x, iff.intro
-  (suppose x ∈ Union (bin_ext s t),
-    obtain i (Hi : x ∈ (bin_ext s t) i), from this,
+  (assume H,
+    obtain i (Hi : x ∈ (bin_ext s t) i), from H,
     by cases i; apply or.inl Hi; apply or.inr Hi)
-  (suppose x ∈ s ∪ t,
-    or.elim this
+  (assume H,
+    or.elim H
       (suppose x ∈ s, exists.intro 0 this)
       (suppose x ∈ t, exists.intro 1 this)))
 
-theorem measurable_union {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s ∪ t) ∈ M := sorry
+private lemma Inter_bin_ext (s t : set X) : (⋂ i, bin_ext s t i) = s ∩ t := 
+ext (take x, iff.intro
+  (assume H, and.intro (H 0) (H 1))
+  (assume H, by intro i; cases i; 
+    apply and.elim_left H; apply and.elim_right H))
 
-theorem measurable_inter {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s ∩ t) ∈ M := sorry
+theorem measurable_union {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s ∪ t) ∈ M := 
+have ∀ i, (bin_ext s t i) ∈ M, by intro i; cases i; exact Hs; exact Ht,
+show (s ∪ t) ∈ M, using this, by rewrite -Union_bin_ext; exact measurable_cUnion this
 
-theorem measurable_sUnion_of_finite {S : set (set X)} {M : sigma_algebra X} [fins : finite S] (H : ∀₀ t ∈ S, t ∈ M) :
-  (⋃₀ S) ∈ M := sorry
+theorem measurable_inter {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s ∩ t) ∈ M := 
+have ∀ i, (bin_ext s t i) ∈ M, by intro i; cases i; exact Hs; exact Ht,
+show (s ∩ t) ∈ M, using this, by rewrite -Inter_bin_ext; exact measurable_cInter this
 
-theorem measurable_sInter_of_finite {S : set (set X)} {M : sigma_algebra X} [fins : finite S] (H : ∀₀ t ∈ S, t ∈ M) :
-  (⋂₀ S) ∈ M := sorry
+theorem measurable_diff {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s \ t) ∈ M := 
+measurable_inter Hs (!sigma_algebra.complements_measurable Ht)
 
-theorem measurable_diff {s t : set X} {M : sigma_algebra X} (Hs : s ∈ M) (Ht : t ∈ M) : (s \ t) ∈ M := sorry
-
-theorem measurable_insert {x : X} {s : set X} {M : sigma_algebra X} (Hx : '{x} ∈ M) (Hs : s ∈ M) : (insert x s) ∈ M := sorry
+theorem measurable_insert {x : X} {s : set X} {M : sigma_algebra X} (Hx : '{x} ∈ M) (Hs : s ∈ M) : (insert x s) ∈ M := 
+!insert_eq⁻¹ ▸ measurable_union Hx Hs
 
 end measure
