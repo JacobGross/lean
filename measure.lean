@@ -10,6 +10,7 @@ structure sigma_algebra [class] (X : Type) :=
   (sUnion_measurable : ∀ {S : set (set X)}, S ⊆ measurables → ⋃₀ S ∈ measurables)
 
 namespace sigma_algebra
+
 variable {X : Type}
 
 attribute [coercion] sigma_algebra.measurables
@@ -107,10 +108,10 @@ inductive measurables_generated_by (B : set (set X)) : set X → Prop :=
 | complements_mem : ∀ ⦃s : set X⦄, measurables_generated_by B s → measurables_generated_by B (-s)
 | sUnion_mem      : ∀ ⦃S : set (set X)⦄, S ⊆ measurables_generated_by B → measurables_generated_by B (⋃₀ S)
 
-definition sigma_algebra_generated_by [instance] [reducible] (B : set (set X)) : sigma_algebra X :=
+definition sigma_algebra_generated_by [instance] [reducible] (G : set (set X)) : sigma_algebra X :=
 ⦃sigma_algebra,
-  measurables            := measurables_generated_by B,
-  univ_measurable        := measurables_generated_by.univ_mem B,
+  measurables            := measurables_generated_by G,
+  univ_measurable        := measurables_generated_by.univ_mem G,
   complements_measurable := measurables_generated_by.complements_mem, 
   sUnion_measurable      := measurables_generated_by.sUnion_mem ⦄
 
@@ -138,18 +139,15 @@ protected theorem le_antisymm (M N : sigma_algebra X) : M ≤ N → N ≤ M → 
 assume H1, assume H2,
 sigma_algebra.eq (subset.antisymm H1 H2)
 
-definition sigma_algebra_inter [instance] [reducible] (M N : sigma_algebra X) : sigma_algebra X :=
-⦃sigma_algebra,
-  measurables            := M ∩ N,
-  univ_measurable        := and.intro (@sigma_algebra.univ_measurable X M) (@sigma_algebra.univ_measurable X N),
-  complements_measurable := take s, assume H, and.intro 
-                             ((@sigma_algebra.complements_measurable X M) s (and.elim_left H)) 
-                             ((@sigma_algebra.complements_measurable X N) s (and.elim_right H)),
-  sUnion_measurable      := take s, assume H, and.intro 
-                             ((@sigma_algebra.sUnion_measurable X M) s (λ x HM, and.elim_left ((H x) HM))) 
-                             ((@sigma_algebra.sUnion_measurable X N) s (λ x HN, and.elim_right ((H x) HN))) ⦄
+protected definition inf (M N : sigma_algebra X) : sigma_algebra X := sigma_algebra_generated_by (M ∩ N)
 
-protected definition inf : sigma_algebra X → sigma_algebra X → sigma_algebra X := λ M N, sigma_algebra_inter M N
+protected definition sup (M N : sigma_algebra X) : sigma_algebra X := sigma_algebra_generated_by (M ∪ N)
+
+private definition to_sets (S : set (sigma_algebra X)) : set (set (set X)) := {s | ∃₀ t ∈ S, s = @sigma_algebra.measurables X t}
+
+protected definition Inf (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋂₀ (to_sets S))
+
+protected definition Sup (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋃₀ (to_sets S))
 
 protected definition complete_lattice [reducible] [trans_instance] :
   complete_lattice (sigma_algebra X) :=
@@ -159,15 +157,15 @@ protected definition complete_lattice [reducible] [trans_instance] :
   le_trans     := sigma_algebra.le_trans,
   le_antisymm  := sigma_algebra.le_antisymm,
   inf          := sigma_algebra.inf,
-  sup          := sorry,
+  sup          := sigma_algebra.sup,
   inf_le_left  := sorry,
   inf_le_right := sorry,
   le_inf       := sorry,
   le_sup_left  := sorry,
   le_sup_right := sorry,
   sup_le       := sorry,
-  Inf          := sorry,
-  Sup          := sorry,
+  Inf          := sigma_algebra.Inf,
+  Sup          := sigma_algebra.Sup,
   Inf_le       := sorry,
   le_Inf       := sorry,
   le_Sup       := sorry,
