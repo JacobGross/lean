@@ -131,6 +131,8 @@ protected theorem le_trans (M N L : sigma_algebra X) : M ≤ N → N ≤ L → M
 assume H1, assume H2,
 subset.trans H1 H2
 
+/- Show all constructors are identical? -/
+
 protected proposition eq {M N : sigma_algebra X} (H : @sigma_algebra.measurables X M = @sigma_algebra.measurables X N) :
   M = N :=
 sorry
@@ -148,6 +150,8 @@ private definition to_sets (S : set (sigma_algebra X)) : set (set (set X)) := {s
 protected definition Sup (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋃₀ (to_sets S))
 
 protected definition Inf (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋂₀ (to_sets S))
+
+/- It is not clear to me how to do proofs by induction on an inductive type like measurables_generated_by -/
 
 protected theorem inf_le_left : ∀ M N : sigma_algebra X, (sigma_algebra.inf M N) ≤ M := sorry
 
