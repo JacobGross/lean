@@ -145,9 +145,31 @@ protected definition sup (M N : sigma_algebra X) : sigma_algebra X := sigma_alge
 
 private definition to_sets (S : set (sigma_algebra X)) : set (set (set X)) := {s | ∃₀ t ∈ S, s = @sigma_algebra.measurables X t}
 
+protected definition Sup (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋃₀ (to_sets S))
+
 protected definition Inf (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋂₀ (to_sets S))
 
-protected definition Sup (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_generated_by (⋃₀ (to_sets S))
+protected theorem inf_le_left : ∀ M N : sigma_algebra X, (sigma_algebra.inf M N) ≤ M := sorry
+
+protected theorem inf_le_right : ∀ M N : sigma_algebra X, (sigma_algebra.inf M N) ≤ N := sorry
+
+protected theorem le_inf : ∀ M N L : sigma_algebra X, L ≤ M → L ≤ N → L ≤ (sigma_algebra.inf M N) := sorry 
+
+protected theorem le_sup_left : ∀ M N : sigma_algebra X, M ≤ (sigma_algebra.sup M N) := sorry
+
+protected theorem le_sup_right : ∀ M N : sigma_algebra X, N ≤ (sigma_algebra.sup M N) := sorry
+
+protected theorem sup_le : ∀ M N L : sigma_algebra X, M ≤ L → N ≤ L → (sigma_algebra.sup M N) ≤ L := sorry
+
+protected theorem Inf_le : ∀ (a : sigma_algebra X) (s : set (sigma_algebra X)), a ∈ s → ((sigma_algebra.Inf s) ≤ a) := sorry
+
+protected theorem le_Inf :
+  ∀ (b : sigma_algebra X) (s : set (sigma_algebra X)), (∀ (a : sigma_algebra X), a ∈ s → b ≤ a) → b ≤ (sigma_algebra.Inf s) := sorry
+
+protected theorem le_Sup : ∀ (a : sigma_algebra X) (s : set (sigma_algebra X)), a ∈ s → a ≤ (sigma_algebra.Sup s) := sorry
+
+protected theorem Sup_le :
+  ∀ (b : sigma_algebra X) (s : set (sigma_algebra X)) (h : ∀ (a : sigma_algebra X), a ∈ s → a ≤ b), (sigma_algebra.Sup s) ≤ b := sorry
 
 protected definition complete_lattice [reducible] [trans_instance] :
   complete_lattice (sigma_algebra X) :=
@@ -158,17 +180,17 @@ protected definition complete_lattice [reducible] [trans_instance] :
   le_antisymm  := sigma_algebra.le_antisymm,
   inf          := sigma_algebra.inf,
   sup          := sigma_algebra.sup,
-  inf_le_left  := sorry,
-  inf_le_right := sorry,
-  le_inf       := sorry,
-  le_sup_left  := sorry,
-  le_sup_right := sorry,
-  sup_le       := sorry,
+  inf_le_left  := sigma_algebra.inf_le_left,
+  inf_le_right := sigma_algebra.inf_le_right,
+  le_inf       := sigma_algebra.le_inf,
+  le_sup_left  := sigma_algebra.le_sup_left,
+  le_sup_right := sigma_algebra.le_sup_right,
+  sup_le       := sigma_algebra.sup_le,
   Inf          := sigma_algebra.Inf,
   Sup          := sigma_algebra.Sup,
-  Inf_le       := sorry,
-  le_Inf       := sorry,
-  le_Sup       := sorry,
-  Sup_le       := sorry ⦄
+  Inf_le       := sigma_algebra.Inf_le,
+  le_Inf       := sigma_algebra.le_Inf,
+  le_Sup       := sigma_algebra.le_Sup,
+  Sup_le       := sigma_algebra.Sup_le ⦄
 
 end sigma_algebra
