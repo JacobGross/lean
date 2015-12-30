@@ -116,7 +116,7 @@ definition sigma_algebra_generated_by [instance] [reducible] (B : set (set X)) :
 
 definition Borel_sets [τ : topology X] : sigma_algebra X := sigma_algebra_generated_by (topology.opens X)
 
-/- complete lower semi-lattice (the union of two sigma algebras is not in general a sigma algebra)-/
+/- complete lattice -/
 
 protected definition le (M N : sigma_algebra X) : Prop := M ⊆ N
 
