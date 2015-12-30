@@ -1,17 +1,18 @@
 import data.real data.set data.nat theories.topology.basic
 open real eq.ops set nat 
 
+/- sigma_algebras -/
+
 structure sigma_algebra [class] (X : Type) :=
   (measurables : set (set X))
   (univ_measurable : univ ∈ measurables)
   (complements_measurable : ∀ S, S ∈ measurables → (-S ∈ measurables))
   (sUnion_measurable : ∀ {S : set (set X)}, S ⊆ measurables → ⋃₀ S ∈ measurables)
 
+namespace sigma_algebra
+variable {X : Type}
+
 attribute [coercion] sigma_algebra.measurables
-
-namespace measure
-
-variable {X : Type} 
 
 definition disjoint (S : set (set X)) : Prop := ∀ a b, a ∈ S → b ∈ S → a ≠ b → a ∩ b = ∅
 
@@ -46,10 +47,10 @@ have ⋂₀ s = -(⋃₀ (complement '[s])) , from !sInter_eq_comp_sUnion_comp,
 have complement '[s] ⊆ M, from 
   take x, suppose x ∈ complement '[s],
   obtain r (Hr : r ∈ s ∧ -r = x), from this,
-  have -r ∈ M, from !sigma_algebra.complements_measurable (H (and.elim_left Hr)),
+  assert -r ∈ M, from !sigma_algebra.complements_measurable (H (and.elim_left Hr)),
   show _, from (and.elim_right Hr) ▸ this,
 have ⋃₀ (complement '[s]) ∈ M, from !sigma_algebra.sUnion_measurable this,
-!sInter_eq_comp_sUnion_comp⁻¹ ▸ (!sigma_algebra.complements_measurable this)
+show _, from !sInter_eq_comp_sUnion_comp⁻¹ ▸ (!sigma_algebra.complements_measurable this)
 
 theorem measurable_cUnion {s : ℕ → set X} {M : sigma_algebra X} (H : ∀ i, s i ∈ M) : (⋃ i, s i) ∈ M := 
 have ∀₀ t ∈ s '[univ], t ∈ M,
@@ -111,18 +112,17 @@ definition sigma_algebra_generated_by [instance] [reducible] (B : set (set X)) :
   measurables            := measurables_generated_by B,
   univ_measurable        := measurables_generated_by.univ_mem B,
   complements_measurable := measurables_generated_by.complements_mem, 
-  sUnion_measurable      := measurables_generated_by.sUnion_mem
-  ⦄
+  sUnion_measurable      := measurables_generated_by.sUnion_mem ⦄
 
-definition Borel_sets {τ : topology X} : sigma_algebra X := sigma_algebra_generated_by (topology.opens X)
+definition Borel_sets [τ : topology X] : sigma_algebra X := sigma_algebra_generated_by (topology.opens X)
 
-/- lattice -/
+/- complete lower semi-lattice (the union of two sigma algebras is not in general a sigma algebra)-/
 
 protected definition le (M N : sigma_algebra X) : Prop := M ⊆ N
 
 definition sigma_algebra_has_le [reducible] [instance] :
   has_le (sigma_algebra X) := 
-has_le.mk measure.le
+has_le.mk sigma_algebra.le
 
 protected theorem le_refl (M : sigma_algebra X) : M ≤ M := subset.refl M
 
@@ -130,18 +130,35 @@ protected theorem le_trans (M N L : sigma_algebra X) : M ≤ N → N ≤ L → M
 assume H1, assume H2,
 subset.trans H1 H2
 
+protected proposition eq {M N : sigma_algebra X} (H : @sigma_algebra.measurables X M = @sigma_algebra.measurables X N) :
+  M = N :=
+sorry
+
 protected theorem le_antisymm (M N : sigma_algebra X) : M ≤ N → N ≤ M → M = N := 
 assume H1, assume H2,
-sorry /- Coercion problem -/
+sigma_algebra.eq (subset.antisymm H1 H2)
+
+definition sigma_algebra_inter [instance] [reducible] (M N : sigma_algebra X) : sigma_algebra X :=
+⦃sigma_algebra,
+  measurables            := M ∩ N,
+  univ_measurable        := and.intro (@sigma_algebra.univ_measurable X M) (@sigma_algebra.univ_measurable X N),
+  complements_measurable := take s, assume H, and.intro 
+                             ((@sigma_algebra.complements_measurable X M) s (and.elim_left H)) 
+                             ((@sigma_algebra.complements_measurable X N) s (and.elim_right H)),
+  sUnion_measurable      := take s, assume H, and.intro 
+                             ((@sigma_algebra.sUnion_measurable X M) s (λ x HM, and.elim_left ((H x) HM))) 
+                             ((@sigma_algebra.sUnion_measurable X N) s (λ x HN, and.elim_right ((H x) HN))) ⦄
+
+protected definition inf : sigma_algebra X → sigma_algebra X → sigma_algebra X := λ M N, sigma_algebra_inter M N
 
 protected definition complete_lattice [reducible] [trans_instance] :
   complete_lattice (sigma_algebra X) :=
 ⦃complete_lattice,
-  le           := measure.le,
-  le_refl      := measure.le_refl,
-  le_trans     := measure.le_trans,
-  le_antisymm  := measure.le_antisymm,
-  inf          := sorry,
+  le           := sigma_algebra.le,
+  le_refl      := sigma_algebra.le_refl,
+  le_trans     := sigma_algebra.le_trans,
+  le_antisymm  := sigma_algebra.le_antisymm,
+  inf          := sigma_algebra.inf,
   sup          := sorry,
   inf_le_left  := sorry,
   inf_le_right := sorry,
@@ -154,7 +171,6 @@ protected definition complete_lattice [reducible] [trans_instance] :
   Inf_le       := sorry,
   le_Inf       := sorry,
   le_Sup       := sorry,
-  Sup_le       := sorry  
-⦄
+  Sup_le       := sorry ⦄
 
-end measure
+end sigma_algebra
