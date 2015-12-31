@@ -1,7 +1,7 @@
 import data.real data.set data.nat theories.topology.basic
 open real eq.ops set nat 
 
-/- sigma_algebras -/
+/- sigma algebras -/
 
 structure sigma_algebra [class] (X : Type) :=
   (measurables : set (set X))
@@ -140,9 +140,18 @@ private definition to_sets (S : set (sigma_algebra X)) : set (set (set X)) := {s
 definition sigma_algebra_Inf (S : set (sigma_algebra X)) : sigma_algebra X :=
 ⦃sigma_algebra,
   measurables            := ⋂₀ (to_sets S),
-  univ_measurable        := sorry,
-  complements_measurable := sorry,
-  sUnion_measurable      := sorry ⦄
+  univ_measurable        := λ s H, obtain t Ht, from H,
+                            show _, from (and.elim_right Ht)⁻¹ ▸ (sigma_algebra.univ_measurable X),
+  complements_measurable := λ s H x Hx, obtain t Ht, from Hx,
+                            have s ∈ @sigma_algebra.measurables X t, from (and.elim_right Ht) ▸ (H Hx),
+                            show _, from (and.elim_right Ht)⁻¹ ▸ (sigma_algebra.complements_measurable s this),
+  sUnion_measurable      := λ s H x Hx, obtain t Ht, from Hx,
+                            have Htr : x = @sigma_algebra.measurables X t, from and.elim_right Ht,
+                            have s ⊆ @sigma_algebra.measurables X t, from 
+                              take y, suppose y ∈ s,
+                              have ∀₀ z ∈ (to_sets S), y ∈ z, from mem_of_subset_of_mem H this,
+                              show _, from Htr ▸ (this Hx),
+                            show _, from Htr⁻¹ ▸ (sigma_algebra.sUnion_measurable this)⦄
 
 protected definition Inf (S : set (sigma_algebra X)) : sigma_algebra X := sigma_algebra_Inf S
 
@@ -172,6 +181,8 @@ protected definition complete_lattice [reducible] [trans_instance] :
   le_Sup       := sorry,
   Sup_le       := sorry ⦄ 
 
-definition Borel_sets [τ : topology X] : sigma_algebra X := sigma_algebra.Inf {s | topology.opens X ⊆ s}
+/- Borel sets -/
+
+definition Borel_algebra [τ : topology X] : sigma_algebra X := sigma_algebra.Inf {s | topology.opens X ⊆ s}
 
 end sigma_algebra
