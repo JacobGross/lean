@@ -183,6 +183,23 @@ protected definition complete_lattice [reducible] [trans_instance] :
 
 /- Borel sets -/
 
-definition Borel_algebra [τ : topology X] : sigma_algebra X := sigma_algebra.Inf {s | topology.opens X ⊆ s}
+section
+  open topology classical
+
+  variable [τ : topology X]
+
+  include τ
+
+  definition Borel_algebra : sigma_algebra X := sigma_algebra.Inf {s | opens X ⊆ s}
+
+  definition Borel (s : set X) : Prop := s ∈ Borel_algebra
+
+  theorem open_Borel : ∀ s : set X, Open s → Borel s := sorry
+
+  theorem closed_Borel : ∀ s : set X, closed s → Borel s := 
+  take s, assume H, !comp_comp ▸ 
+    ((@sigma_algebra.complements_measurable X Borel_algebra) (-s) (open_Borel (-s) H)) 
+
+end
 
 end sigma_algebra
