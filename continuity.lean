@@ -112,6 +112,38 @@ take V, assume H, by rewrite[preimage_id]; apply H
 
 end continuous
 
+/- homeomorphisms -/
+
+section homeomorphism
+
+include TX TY
+
+definition homeomorphism (f : X → Y) : Prop := continuous f ∧ bijective f ∧ (∃ g, inv_on g f (@univ X) (@univ Y) ∧ continuous g)
+
+definition open_map (f : X → Y) : Prop := ∀ U, Open U → Open (image f U)
+
+theorem homeomorphism_is_open_map : ∀ f : X → Y, homeomorphism f → open_map f := 
+take f, assume H,
+obtain g [Hf Hg], from and.elim_right (and.elim_right H), 
+take U, assume HU,
+  have image f U = preimage g U, from ext(
+    take x, iff.intro
+      (suppose x ∈ image f U, 
+        obtain y [(Hy₁ : y ∈ U) (Hy₂ : f y = x)], from this,
+        have g x = y, by rewrite[-Hy₂]; apply (and.elim_left Hf) y !mem_univ,
+        exists.intro y (and.intro Hy₁ this))
+      (suppose x ∈ preimage g U, 
+        obtain y [(Hy₁ : y ∈ U) (Hy₂ : g x = y)], from this,
+        have f y = x, by rewrite[-Hy₂]; apply (and.elim_right Hf) x !mem_univ,
+        exists.intro y (and.intro Hy₁ this))),
+ show Open (image f U), from this⁻¹ ▸ (Hg U HU)
+
+definition invertible (f : X → Y) : Prop := ∃ g, inv_on g f (@univ X) (@univ Y)
+
+theorem inverible_open_map_is_homeomorphism : ∀ f : X → Y, invertible f → continuous f → open_map f → homeomorphism f := sorry
+
+end homeomorphism
+
 /- The category TOP -/
 
 section Top
@@ -132,11 +164,14 @@ protected theorem comp : Π⦃A B C : topological_space⦄, continuous_map B C �
 sorry
 
 protected theorem assoc : Π ⦃A B C D : topological_space⦄ (h : continuous_map C D) (g : continuous_map B C) (f : continuous_map A B),
- continuity.comp h (continuity.comp g f) = continuity.comp (continuity.comp h g) f := sorry
+ continuity.comp h (continuity.comp g f) = continuity.comp (continuity.comp h g) f := 
+sorry
 
-protected theorem id_left : Π ⦃A B : topological_space⦄ (f : continuous_map A B), continuity.comp !continuity.ID f = f := sorry
+protected theorem id_left : Π ⦃A B : topological_space⦄ (f : continuous_map A B), continuity.comp !continuity.ID f = f := 
+sorry
 
-protected theorem id_right : Π ⦃A B : topological_space⦄ (f : continuous_map A B), continuity.comp f !continuity.ID = f := sorry
+protected theorem id_right : Π ⦃A B : topological_space⦄ (f : continuous_map A B), continuity.comp f !continuity.ID = f := 
+sorry
 
 noncomputable definition TOP [reducible] [trans_instance] : category (topological_space) :=
 mk (continuous_map)
@@ -147,19 +182,5 @@ mk (continuous_map)
    (continuity.id_right)
 
 end Top
-
-section homeomorphism
-
-include TX TY
-
-definition homeomorphism (f : X → Y) : Prop := continuous f ∧ bijective f ∧ (∃ g, inv_on g f (@univ X) (@univ Y) ∧ continuous g)
-
-definition open_map (f : X → Y) : Prop := ∀ U, Open U → Open (image f U)
-
-theorem homeomorphism_is_open_map : ∀ f : X → Y, homeomorphism f → open_map f := sorry
-
-definition invertible (f : X → Y) : Prop := ∃ g, inv_on g f (@univ X) (@univ Y)
-
-end homeomorphism
 
 end continuity
