@@ -1,5 +1,5 @@
-import data.set theories.topology.basic algebra.category
-open algebra eq.ops set topology function category
+import data.set theories.topology.basic algebra.category data.sigma init.sigma
+open algebra eq.ops set topology function category sigma sigma.ops
 
 namespace continuity
 
@@ -84,20 +84,19 @@ end continuous
 
 section Top
 
-definition topological_space : Type := Σ X, topology X
+definition topological_space : Type := Σ X : Type, topology X
 
+definition continuous_top_explicit (TX : topology X) (TY : topology Y) (f : X → Y) : Prop := ∀ V : set Y, Open V → Open (preimage f V)
 
-/-use sigma type projections -/
-definition continuity : Type := Π [TX : topology X] [TY : topology Y], Σ f : X → Y, continuous f
+definition continuity (X Y : topological_space) : Type := Σ f : X.1 → Y.1, continuous_top_explicit X.2 Y.2 f
 
-definition TOP [reducible] [trans_instance] : category (topological_space) :=
-⦃category,  
-  hom      := sorry, 
-  comp     := sorry,
-  ID       := sorry,
-  assoc    := sorry,
-  id_left  := sorry,
-  id_right := sorry ⦄
+definition TOP [reducible] : category (topological_space) :=
+mk (λ X Y, continuity X Y)
+   (sorry)
+   (sorry)
+   (sorry)
+   (sorry)
+   (sorry)
 
 end Top
 
