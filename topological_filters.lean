@@ -1,91 +1,151 @@
-import data.set theories.topology.basic algebra.intervals
-open algebra eq.ops set intervals topology
+import data.set theories.topology.basic 
+open algebra eq.ops set topology set.filter
 
-namespace order_topology
+namespace topological_filter
 
-variables {X : Type} [L : linear_strong_order_pair X]
+/- eventually elims -/
 
-include L
+variable {X : Type}
 
-notation `linorder_generators` := {y | ∃ a, y = '(a, ∞) } ∪ {y | ∃ a, y = '(-∞, a)}
+theorem eventually_and_elim_left {P Q : X → Prop} {F : filter X} (H : eventually (λ x, P x ∧ Q x) F) :
+  eventually P F :=
+!filter.is_mono (λ x HPQ, and.elim_left HPQ) H
 
-definition linorder_topology [instance] [reducible] : topology X := 
-  topology_generated_by linorder_generators
+theorem eventually_and_elim_right {P Q : X → Prop} {F : filter X} (H : eventually (λ x, P x ∧ Q x) F) :
+  eventually Q F :=
+!filter.is_mono (λ x HPQ, and.elim_right HPQ) H
 
-theorem open_lt {a : X} : Open '(a, ∞) := 
-(generators_mem_topology_generated_by linorder_generators) (!mem_unionl (exists.intro a rfl))
+variables {P Q : X → Prop} (F : filter X)
 
-theorem open_gt {a : X} : Open '(-∞, a) := 
-(generators_mem_topology_generated_by linorder_generators) (!mem_unionr (exists.intro a rfl))
+/- frequently -/
 
-theorem closed_le {a : X} : closed ('[a,∞)) := 
-have '(-∞, a) = -'[a,∞), from ext(take x, iff.intro 
-  (assume H, not_le_of_gt H) 
-  (assume H, lt_of_not_ge H)),
-this ▸ open_gt
+definition frequently (P : X → Prop) (F : filter X) : Prop := ¬ eventually (λ x, ¬ P x) F 
 
-theorem closed_ge {a : X} : closed '(-∞,a] :=
-have '(a, ∞) = -'(-∞,a], from ext(take x, iff.intro 
-  (assume H, not_le_of_gt H) 
-  (assume H, lt_of_not_ge H)),
-this ▸ open_lt
+theorem eventually_imp_not_frequently : eventually (λ x, ¬ P x) F → ¬ frequently P F :=
+not_not_intro
+
+theorem frequently_mono (H₁ : frequently P F) (H₂ : ∀ x, P x → Q x) : frequently Q F :=
+(not.mto (λ H, eventually_mono H ( λ x, not.mto (H₂ x)))) H₁
+
+theorem frequently_mp (ev : eventually (λ x, P x → Q x) F) :
+  frequently P F → frequently Q F := 
+not.mto (λ H, eventually_mp (eventually_mono ev (λ x HPQ, not.mto HPQ)) H)
+
+theorem not_frequently_false : ¬(frequently (λ x, false) F) := 
+not.intro(assume H,
+  have @univ X = (λx , ¬false), from ext (take x, iff.intro 
+    (λ H, not.intro(λ f, f)) (λ H, !mem_univ)),
+  absurd (this ▸ !univ_mem_sets) H)
 
 section
   open classical
 
-  theorem linorder_separation {x y : X} :
-    x < y → ∃ a b, (x < a ∧ b < y) ∧ '(-∞, a) ∩ '(b, ∞) = ∅ := 
-  suppose x < y,
-  if H1 : ∃ z, x < z ∧ z < y then
-    obtain z (Hz : x < z ∧ z < y), from H1,
-    have '(-∞, z) ∩ '(z, ∞) = ∅, from ext(take r, iff.intro
-      (assume H, absurd (!lt.trans (and.elim_left H) (and.elim_right H)) !lt.irrefl)
-      (assume H, !not.elim !not_mem_empty H)), 
-    exists.intro z (exists.intro z (and.intro Hz this))
-  else
-    have '(-∞, y) ∩ '(x, ∞) = ∅, from ext(take r, iff.intro
-      (assume H, absurd (exists.intro r (iff.elim_left and.comm H)) H1)
-      (assume H, !not.elim !not_mem_empty H)),
-    exists.intro y (exists.intro x (and.intro (and.intro `x < y` `x < y`) this))
+theorem not_frequently_iff  : ¬ frequently P F ↔ (eventually (λ x, ¬ P x) F) := 
+iff.intro
+  (assume H, not_not_elim H)
+  (assume H, not_not_intro H)
+
+theorem frequently_ex : frequently P F → ∃ x, P x := 
+assume H, obtain x Hx, from !exists_not_of_not_eventually H, 
+show _, from exists.intro x (not_not_elim Hx)
+
+theorem frequently_inl (H₁ : frequently P F) : frequently (λx , P x ∨ Q x) F :=
+have H1 : ¬(eventually (λ x, ¬ P x ∧ ¬ Q x) F), from not.intro(
+  assume H, absurd 
+    (and.intro (eventually_and_elim_left H) (eventually_and_elim_right H)) 
+    ((iff.elim_right not_and_iff_not_or_not) (or.inl H₁))),
+show _, from not.intro(
+  assume H,
+  have ∀ x, ¬ (P x ∨ Q x) → ¬ P x ∧ ¬ Q x, from take x, assume H',
+    (iff.elim_left not_or_iff_not_and_not) H',
+  absurd (!filter.is_mono this H) H1)
+
+theorem frequently_inr (H₁ : frequently Q F) : frequently (λx , P x ∨ Q x) F :=
+have H1 : ¬(eventually (λ x, ¬ P x ∧ ¬ Q x) F), from not.intro(
+  assume H, absurd 
+    (and.intro (eventually_and_elim_left H) (eventually_and_elim_right H)) 
+    ((iff.elim_right not_and_iff_not_or_not) (or.inr H₁))),
+show _, from not.intro(
+  assume H,
+  have ∀ x, ¬ (P x ∨ Q x) → ¬ P x ∧ ¬ Q x, from take x, assume H',
+    (iff.elim_left not_or_iff_not_and_not) H',
+  absurd (!filter.is_mono this H) H1)
 
 end
- 
-protected definition T2_space.of_linorder_topology [reducible] [trans_instance] :
-  T2_space X :=
-⦃ T2_space, linorder_topology,
-  T2 := abstract
-         take x y, assume H,
-         or.elim (lt_or_gt_of_ne H) 
-           (assume H,
-            obtain a [b Hab], from linorder_separation H,
-            show _, from exists.intro '(-∞, a) (exists.intro '(b, ∞) 
-              (and.intro open_gt (and.intro open_lt (iff.elim_left and.assoc Hab)))))
-           (assume H,
-            obtain a [b Hab], from linorder_separation H,
-            have Hx : x ∈ '(b, ∞), from and.elim_right (and.elim_left Hab),
-            have Hy : y ∈ '(-∞, a), from and.elim_left (and.elim_left Hab),
-            have Hi : '(b, ∞) ∩ '(-∞, a) = ∅, from !inter.comm ▸ (and.elim_right Hab),
-            have (Open '(b,∞)) ∧ (Open '(-∞, a)) ∧ x ∈ '(b, ∞) ∧ y ∈ '(-∞, a) ∧ '(b, ∞) ∩ '(-∞, a) = ∅, from 
-             and.intro open_lt (and.intro open_gt (and.intro Hx (and.intro Hy Hi))),
-           show _, from exists.intro '(b,∞) (exists.intro '(-∞, a) this))
-        end ⦄
 
-theorem open_right {S : set X} {x y : X} :
-  (Open S ∧ x ∈ S ∧ x < y) → ∃ b, b > x ∧ '(-∞, b) ⊆ S := 
-assume H,
-sorry
+/- generated filters -/
 
-theorem open_left {S : set X} {x y : X} :
-  (Open S ∧ x ∈ S ∧ y < x) → ∃ b, b < x ∧ '(b, ∞) ⊆ S :=
-assume H,
-sorry
+inductive sets_generated_by  {X : Type} (B : set (set X)) : set X → Prop :=
+| generators_mem : ∀ ⦃s : set X⦄, s ∈ B → sets_generated_by B s
+| univ_mem : sets_generated_by B univ
+| inter_mem : ∀ {a b}, sets_generated_by B a → sets_generated_by B b → sets_generated_by B (a ∩ b)
+| mono_mem : ∀ {a b}, a ⊆ b → sets_generated_by B a → sets_generated_by B b
 
-end order_topology
+definition filter_generated_by [reducible] {X : Type} (B : set (set X)) : filter X :=
+⦃filter,
+  sets            := sets_generated_by B,
+  univ_mem_sets   := sets_generated_by.univ_mem B,
+  inter_closed    := @sets_generated_by.inter_mem X B,
+  is_mono         := @sets_generated_by.mono_mem X B ⦄
 
-namespace topological_filters
+theorem generators_mem_filter_generated_by {X : Type} (B : set (set X)) :
+ let T := filter_generated_by B in
+  ∀₀ s ∈ B, s ∈ T :=
+λ s H, sets_generated_by.generators_mem H
 
-variables {X : Type} [topology (set X)]
+theorem sets_generated_by_initial {X : Type} {B : set (set X)} {F : filter X} (H : B ⊆ F) :
+  sets_generated_by B ⊆ F :=
+begin
+  intro s Hs,
+  induction Hs with s sB s t os ot soX toX S SB SOX,
+    {exact H sB},
+    {exact filter.univ_mem_sets F},
+    {exact filter.inter_closed F soX toX},
+   exact filter.is_mono F SOX v_0
+end
 
-definition nhds (a : set X) : filter X := filter.Inf {S | Open S ∧ a ∈ S}
+theorem filter_generated_by_initial {X : Type} {B : set (set X)} {F : filter X}
+    (H : ∀₀ s ∈ B, s ∈ F) {s : set X} (H1 : s ∈ (filter_generated_by B)) :
+  s ∈ F := sets_generated_by_initial H H1
 
-end topological_filters
+/- principal filter -/
+
+definition principal (s : set X) : filter X := filter_generated_by '{s}
+
+theorem set_in_principal_set {s : set X} : s ∈ principal s := 
+!generators_mem_filter_generated_by !mem_singleton
+
+theorem eventually_principal {s : set X} : eventually P (principal s) ↔ (s ⊆ P) :=
+iff.intro
+  (suppose H : eventually P (principal s), 
+    have P ∈ filter_generated_by '{s}, from H,
+    take x, suppose x ∈ s,
+      begin+
+        induction H with s Ps,
+          {exact ((iff.elim_left !mem_singleton_iff) Ps)⁻¹ ▸ this},
+          {exact !mem_univ},
+          {exact and.intro (v_0 a_1) (v_1 a_2)},
+          {exact a_1 (v_0 a_2)}
+      end)
+  (suppose H : s ⊆ P, !filter.is_mono H (! set_in_principal_set))
+
+theorem principal_empty : principal (∅ : set X) = ⊥ := 
+have sets(principal (∅ : set X)) = sets (⊥), from ext(take x, iff.intro
+  (assume H, !mem_univ)
+  (assume H, !filter.is_mono (empty_subset x) (!set_in_principal_set))),
+filter.eq this
+
+theorem principal_eq_bot_iff {s : set X} : principal s = bot ↔ s = ∅ := sorry
+
+theorem principal_univ : principal (@univ X) = ⊤ := 
+have sets (principal (@univ X)) = ⊤, from ext(take x, iff.intro
+  (assume H, have univ ⊆ x, from (iff.elim_left eventually_principal) H, 
+    show _, from (!eq_univ_of_univ_subset this)⁻¹ ▸ !mem_singleton)
+  (assume H, ((iff.elim_left !mem_singleton_iff) H) ▸ !set_in_principal_set)),
+filter.eq this
+
+theorem principal_eq_top_iff {s : set X} : principal s = top ↔ s = univ := sorry
+
+theorem eventually_inf_principal {s : set X} : eventually P (inf F (principal s)) ↔ eventually (λ x, x ∈ s → P x) F := sorry
+
+end topological_filter
