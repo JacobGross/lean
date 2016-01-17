@@ -1,186 +1,154 @@
-import data.set theories.topology.basic algebra.category 
-open algebra eq.ops sigma.ops set topology function category
+import data.set theories.topology.basic
+open algebra eq.ops set topology function
 
 namespace continuity
 
-variables {X Y Z : Type} [TX : topology X] [TY : topology Y] [TZ : topology Z]
+variables {X Y Z : Type} [TX : topology X] [topology Y] [topology Z]
+include TX /- needed to name TX because "continuous_on_const" couldn't find the topology without making it explicit -/
 
 /- preimages -/
 
-section preimage
+attribute mem [reducible]
 
-definition preimage (f : X → Y) (a : set Y) : set X := {x : X | ∃ y, y ∈ a ∧ f x = y}
+definition preimage (f : X → Y) (a : set Y) : set X := {x : X | f x ∈ a}
 
-theorem mem_preimage {f : X → Y} {a : set Y} {x : X} {y : Y} (H1 : y ∈ a) (H2 : f x = y) : 
+theorem mem_preimage (f : X → Y) (a : set Y) (x : X) (y : Y) (H1 : y ∈ a) (H2 : f x = y) : 
   x ∈ preimage f a := 
-exists.intro y (and.intro H1 H2)
+show f x ∈ a, from H2⁻¹ ▸ H1 -- Could not just write "H2⁻¹ ▸ H1" here... strange -- this also required marking mem as reducible
 
 theorem mem_preimage_iff (f : X → Y) (a : set Y) (x : X) : 
    (f x) ∈ a ↔ x ∈ preimage f a := 
-iff.intro
-  (assume H, exists.intro (f x) (and.intro H rfl))
-  (assume H, obtain y [H1 H2], from H, by rewrite[H2]; apply H1)
+!iff.refl
 
 theorem preimage_compose (f : Y → Z) (g : X → Y) (a : set Z) : 
   preimage (f ∘ g) a = preimage g (preimage f a) := 
-ext(take x,
-  iff.intro
-    (assume Hz : x ∈ preimage (f ∘ g) a,
-      obtain z [Hz₁ Hz₂], from Hz,
-      have g x ∈ preimage f a, from exists.intro z (and.intro Hz₁ Hz₂),
-      show _, from exists.intro (g x) (and.intro this rfl))
-    (assume Hz : x ∈ preimage g (preimage f a), 
-      obtain y [Hy₁ Hy₂], from Hz,
-      obtain z [Hz₁ Hz₂], from Hy₁,
-      have f (g x) = z, by rewrite[-Hz₂]; apply Hy₂ ▸ rfl,
-      show _, from exists.intro z (and.intro Hz₁ this)))
+ext(take x, !iff.refl)
 
 theorem preimage_subset {a b : set Y} (f : X → Y) (H : a ⊆ b) : 
   preimage f a ⊆ preimage f b := 
-take x, assume Hf, 
-obtain y [Hy₁ Hy₂], from Hf,
-exists.intro y (and.intro (!H Hy₁) Hy₂)
+λ x H', H H'
 
 theorem preimage_union (f : X → Y) (s t : set Y) : 
   preimage f (s ∪ t) = preimage f s ∪ preimage f t := 
-ext(take x, iff.intro
-  (assume H, obtain y [xst fxy], from H,
-    or.elim xst
-     (assume xs, or.inl (mem_preimage xs fxy))
-     (assume xt, or.inr (mem_preimage xt fxy)))
-  (assume H, or.elim H
-      (assume xifs : x ∈ preimage f s, 
-         obtain y [xs fxy], from xifs,
-         exists.intro y (and.intro (or.inl xs) fxy))
-      (assume xift : x ∈ preimage f t, 
-         obtain y [xr fxy], from xift,
-         exists.intro y (and.intro (or.inr xr) fxy))))
+ext(take x, !iff.refl)
 
 theorem preimage_id (s : set Y) : preimage (λx, x) s = s := 
+ext(take x, !iff.refl)
+
+theorem preimage_complement (s : set Y) (f : X → Y) : 
+  (-(preimage f s)) = preimage f (-s) := 
+ext(take x, !iff.refl)
+
+/- continuity on a set -/
+
+definition continuous_on (U : set X) (f : X → Y) : Prop := ∀ V, Open V → Open (preimage f V ∩ U)
+
+theorem continuous_on_cong (s t : set X) (f g : X → Y) : 
+  s = t → (∀₀ x ∈ t, f x = g x) → continuous_on s f → continuous_on t g :=
+assume Hst, assume H1 : (∀₀ x ∈ t, f x = g x), assume H2,
+take V, suppose OpV : Open V,
+have preimage f V ∩ s = preimage g V ∩ t, from ext(take x, iff.intro
+  (suppose H : x ∈ preimage f V ∩ s,
+    have x ∈ t, from Hst ▸ (and.elim_right H), 
+    have g x ∈ V, from (H1 `x ∈ t`) ▸ (and.elim_left H),
+    show _, from and.intro this (`x ∈ t`))
+  (suppose H : x ∈ preimage g V ∩ t, 
+    have x ∈ t, from and.elim_right H,
+    have f x ∈ V, from (H1 `x ∈ t`)⁻¹ ▸ (and.elim_left H),
+    show _, from and.intro this (Hst⁻¹ ▸ (and.elim_right H)))),
+show Open (preimage g V ∩ t), from this ▸ (H2 V OpV)
+
+theorem continuous_imp_open_preimage (U : set X) (V : set Y) (OpV : Open V) (f : X → Y) (sub : preimage f V ⊆ U) : 
+   continuous_on U f → Open (preimage f V) := 
+assume H : continuous_on U f,
+have preimage f V ∩ U = preimage f V, from ext(take x, iff.intro
+  (assume H, and.elim_left H)
+  (assume H, and.intro H (sub H))),
+show _, from this ▸ (H V OpV)
+
+theorem open_preimage (V : set Y) (OpV : Open V) (f : X → Y) : continuous_on univ f → Open (preimage f V) := 
+assume H : continuous_on univ f,
+have preimage f V ⊆ univ, from λ x xf, !mem_univ,
+show _, from (continuous_imp_open_preimage univ V OpV f this) H
+
+theorem closed_preimage (V : set Y) (f : X → Y) (HV : closed V) : 
+  continuous_on univ f → closed (preimage f V) := 
+suppose continuous_on univ f,
+have Open (preimage f (-V)), from open_preimage (-V) HV f this,
+show _, from (preimage_complement V f) ▸ this
+
+theorem continuous_on_open_union (s t : set X) (f : X → Y) :
+  continuous_on s f → continuous_on t f → continuous_on (s ∪ t) f :=
+assume H1, assume H2, take V, suppose OpV : Open V,
+have preimage f V ∩ (s ∪ t) = (preimage f V ∩ s) ∪ (preimage f V ∩ t), from ext(λx, !and.left_distrib), -- inter_distrib_left comes up as unidentified
+show _, from this⁻¹ ▸ (Open_union (H1 V OpV) (H2 V OpV))
+
+variable {I : Type}
+
+lemma int_distrib_Union_left (s : I → set X) (a : set X) :
+  a ∩ (⋃ i, s i) = ⋃ i, a ∩ s i := 
 ext(take x, iff.intro
-  (assume H, obtain y [Hy₁ Hy₂], from H,
-    show _, by rewrite[Hy₂]; apply Hy₁)
-  (assume H, exists.intro x (and.intro H rfl)))
+  (assume H, obtain i Hi, from and.elim_right H,
+    have x ∈ a ∩ s i, from and.intro (and.elim_left H) Hi,
+    show _, from exists.intro i this)
+  (assume H, obtain i [xa xsi], from H,
+   show _, from and.intro xa (exists.intro i xsi)))
 
-end preimage
+theorem continuous_on_open_Union (s : I → set X) (f : X → Y) :
+  (∀ i, continuous_on (s i) f) → continuous_on (⋃ i, s i) f := 
+λ H V OpV, !int_distrib_Union_left⁻¹ ▸ (Open_Union (λ i, (H i) V OpV))
 
-/- continuity -/
+theorem continuous_on_id {U : set X} (OpU: Open U) : continuous_on U (λx, x) := 
+  by intro V OpV; rewrite[*preimage_id]; exact Open_inter OpV OpU
 
-section continuous
-
-include TX TY
-
-definition continuous (f : X → Y) : Prop := ∀ V : set Y, Open V → Open (preimage f V)
-
-definition continuous_at (f : X → Y) (x : X) : Prop :=
-∀ V, Open V ∧ (f x) ∈ V → Open (preimage f V) ∧ x ∈ preimage f V
-
-section 
+section
   open classical
 
-theorem continuous_at_all_iff_continuous (f : X → Y) : (∀ x, continuous_at f x) ↔ continuous f := 
-iff.intro
-  (suppose H : ∀ x, continuous_at f x, 
-    take V : set Y, suppose OpV : Open V,
-    if HV : preimage f V = ∅ then
-      by rewrite[HV]; apply Open_empty
-    else
-      obtain x (Hx : x ∈ preimage f V), from by_contradiction 
-        (assume H', HV (eq_empty_of_forall_not_mem (forall_not_of_not_exists H'))),
-      have (f x) ∈ V, from (iff.elim_right !mem_preimage_iff) Hx,
-      show _, from and.elim_left (((H x) V) (and.intro OpV this)))
-  (suppose H : continuous f, 
-    take x, take V, assume HV,
-    show _, from and.intro 
-      (H V (and.elim_left HV)) 
-      ((iff.elim_left !mem_preimage_iff) (and.elim_right HV)))
+theorem continuous_on_const {U : set X} (OpU : Open U) {c : Y} : continuous_on U (λ x : X, c) := 
+take V,
+suppose OpV : Open V,
+if Hc : c ∈ V then 
+  have preimage (λx : X, c) V = univ, from ext(take y, 
+     iff.intro 
+       (assume H, !mem_univ)
+       (assume H, Hc)),
+  show _, from this⁻¹ ▸ (Open_inter Open_univ OpU)
+else 
+  have preimage (λx : X, c) V = ∅, from ext(take y,
+    iff.intro 
+      (assume H, !not.elim Hc H) 
+      (assume H, !not.elim !not_mem_empty H)),
+  show _, from Open_inter (this⁻¹ ▸ Open_empty) OpU
 
 end
 
-include TZ
+theorem continuous_composition (f : Y → Z) (g : X → Y) {U : set X} :
+ continuous_on U g → continuous_on (g '[U]) f → continuous_on U (f ∘ g) := 
+assume H1 : continuous_on U g, 
+assume H2, take V, assume OpV,
+have preimage g (preimage f V ∩ (g '[U])) ∩ U = preimage (f ∘ g) V ∩ U, from ext(
+  take x, iff.intro
+    (assume H, have x ∈ U, from and.elim_right H,
+     have x ∈ preimage g (preimage f V ∩ (g '[U])), from and.elim_left H,
+     show f (g x) ∈ V ∧ x ∈ U, from and.intro (and.elim_left this) `x ∈ U`)
+    (assume H, have xU : x ∈ U, from and.elim_right H,
+      have g x ∈ g '[U], from mem_image_of_mem g xU,
+      have g x ∈ preimage f V, by rewrite[↑preimage]; exact and.elim_left H,
+      show _, from and.intro (and.intro this (mem_image_of_mem g xU)) xU)),
+show _, from this ▸ (!H1 (H2 V OpV))
 
-theorem continuous_composition (f : Y → Z) (g : X → Y) (Hf : continuous f) (Hg : continuous g) :
-  continuous (f ∘ g) :=
-begin 
-  intro V H,
-  rewrite[preimage_compose],
-  exact (Hg (preimage f V)) ((Hf V) H)
-end
-
-theorem continuous_id : continuous (λ x : X, x) := 
-take V, assume H, by rewrite[preimage_id]; apply H
-
-end continuous
-
-/- homeomorphisms -/
-
-section homeomorphism
-
-include TX TY
-
-definition homeomorphism (f : X → Y) : Prop := continuous f ∧ bijective f ∧ (∃ g, inv_on g f (@univ X) (@univ Y) ∧ continuous g)
-
-definition open_map (f : X → Y) : Prop := ∀ U, Open U → Open (image f U)
-
-theorem homeomorphism_is_open_map : ∀ f : X → Y, homeomorphism f → open_map f := 
-take f, assume H,
-obtain g [Hf Hg], from and.elim_right (and.elim_right H), 
-take U, assume HU,
-  have image f U = preimage g U, from ext(
-    take x, iff.intro
-      (suppose x ∈ image f U, 
-        obtain y [(Hy₁ : y ∈ U) (Hy₂ : f y = x)], from this,
-        have g x = y, by rewrite[-Hy₂]; apply (and.elim_left Hf) y !mem_univ,
-        exists.intro y (and.intro Hy₁ this))
-      (suppose x ∈ preimage g U, 
-        obtain y [(Hy₁ : y ∈ U) (Hy₂ : g x = y)], from this,
-        have f y = x, by rewrite[-Hy₂]; apply (and.elim_right Hf) x !mem_univ,
-        exists.intro y (and.intro Hy₁ this))),
- show Open (image f U), from this⁻¹ ▸ (Hg U HU)
-
-definition invertible (f : X → Y) : Prop := ∃ g, inv_on g f (@univ X) (@univ Y)
-
-theorem inverible_open_map_is_homeomorphism : ∀ f : X → Y, invertible f → continuous f → open_map f → homeomorphism f := sorry
-
-end homeomorphism
-
-/- The category TOP -/
-
-section Top
-
-definition topological_space : Type := Σ X : Type, topology X
-
-definition continuous_top_explicit (TX : topology X) (TY : topology Y) (f : X → Y) : Prop := continuous f
-
-definition continuous_map (X Y : topological_space) : Type := Σ f : X.1 → Y.1, continuous_top_explicit X.2 Y.2 f
-
-protected theorem ID : Π (A : topological_space), continuous_map A A := 
-take A : topological_space,
-have continuous_top_explicit A.2 A.2 (λ x : A.1, x), from 
-  take V, assume H, by rewrite[preimage_id]; apply H,
-show continuous_map A A, from sigma.mk (λ x : A.1, x) this
-
-protected theorem comp : Π⦃A B C : topological_space⦄, continuous_map B C → continuous_map A B → continuous_map A C := 
-sorry
-
-protected theorem assoc : Π ⦃A B C D : topological_space⦄ (h : continuous_map C D) (g : continuous_map B C) (f : continuous_map A B),
- continuity.comp h (continuity.comp g f) = continuity.comp (continuity.comp h g) f := 
-sorry
-
-protected theorem id_left : Π ⦃A B : topological_space⦄ (f : continuous_map A B), continuity.comp !continuity.ID f = f := 
-sorry
-
-protected theorem id_right : Π ⦃A B : topological_space⦄ (f : continuous_map A B), continuity.comp f !continuity.ID = f := 
-sorry
-
-noncomputable definition TOP [reducible] [trans_instance] : category (topological_space) :=
-mk (continuous_map)
-   (continuity.comp)
-   (continuity.ID)
-   (continuity.assoc)
-   (continuity.id_left)
-   (continuity.id_right)
-
-end Top
+theorem continuous_composition2 (g : Y → Z) (f : X → Y) (U : set X) :
+continuous_on (f '[U]) g → continuous_on U f → continuous_on U (g ∘ f) := 
+assume H1, assume H2 : continuous_on U f,
+take V, suppose OpV : Open V,
+have preimage f (preimage g V ∩ (f '[U])) ∩ U = preimage (g ∘ f) V ∩ U, from ext (take x, iff.intro
+    (assume H, have x ∈ U, from and.elim_right H,
+     have x ∈ preimage f (preimage g V ∩ (f '[U])), from and.elim_left H,
+     show g (f x) ∈ V ∧ x ∈ U, from and.intro (and.elim_left this) `x ∈ U`)
+    (assume H, have xU : x ∈ U, from and.elim_right H,
+      have f x ∈ f '[U], from mem_image_of_mem f xU,
+      have f x ∈ preimage g V, by rewrite[↑preimage]; exact and.elim_left H,
+      show _, from and.intro (and.intro this (mem_image_of_mem f xU)) xU)),
+show _, from this ▸ (!H2 (H1 V OpV))
 
 end continuity
