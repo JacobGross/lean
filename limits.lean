@@ -91,3 +91,14 @@ assume H, λ P H', H P (and.elim_left H')
 theorem filterlim_filtermap {f : X → Y} {g : Y → Z} :
   filterlim g F3 (filtermap f F1) ↔ filterlim (λx, g (f x)) F3 F1 :=
 !iff.refl
+
+theorem filterlim_Inf1 {f : X → Y} {S : set (filter Y)} : 
+  filterlim f (Inf S) F → ∀₀ B ∈ S, filterlim f B F := 
+suppose filterlim f (Inf S) F, take B, assume BS, take P, assume PB,
+show _, from this take F, suppose ∀ G, G ∈ S → G ≽ F, (this B BS) PB
+
+theorem filterlim_Inf2 {f : X → Y} {S : set (filter Y)} (HS : ∃₀ B ∈ S, ∀₀ G ∈ S, G ≽ B) :
+  (∀₀ B ∈ S, filterlim f B F) → filterlim f (Inf S) F :=
+assume H, take P, assume H', 
+obtain B BS HB, from HS, 
+show _, from (@H B BS) P (H' HB)
