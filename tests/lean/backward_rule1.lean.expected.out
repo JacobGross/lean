@@ -1,0 +1,8 @@
+constant H [intro] : A → B
+constant G [intro] : A → B → C
+constant f [intro] : T → A
+f
+G
+H
+exists_unique.intro
+Exists.intro
