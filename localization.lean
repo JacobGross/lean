@@ -31,11 +31,14 @@ theorem equiv.refl [refl] (a : preloc S mS) :
 have 1 ∈ S, from and.elim_left mS,
 exists.intro 1 (and.intro `1 ∈ S` (by simp))
 
-protected lemma aux (a b c : R) : -- remove aux
+private lemma aux (a b c : R) :
   c * (-b + a) = -c * (b - a) :=
-sorry
+calc
+  c * (-b + a) = c * ((-1) * b + (-1) * -a) : by blast
+           ... = (c * (-1)) * (b + -a)      : by rewrite[-left_distrib, mul.assoc]
+           ... = -c * (b - a)               : by blast
 
-/-theorem equiv.symm [symm] {a b : preloc S mS} (H : equiv S mS a b) :
+theorem equiv.symm [symm] {a b : preloc S mS} (H : equiv S mS a b) :
   equiv S mS b a :=
 let a₁ := preloc.fst a, a₂ := preloc.snd a, 
     b₁ := preloc.fst b, b₂ := preloc.snd b in
@@ -81,7 +84,7 @@ proof
                                    ... = s * t * (a₁ * c₂ * b₂ - a₂ * c₁ * b₂)       : by blast
                                    ... = 0                                           : this, 
   exists.intro (s*t*b₂) (and.intro `s * t * b₂ ∈ S` this)
-qed-/
+qed
 
 check equiv S mS
 
@@ -110,7 +113,7 @@ protected definition mul (a b : preloc S mS) : preloc S mS :=
   sndS := frac_denom_closed a b
 ⦄
 
-definition pre_neg (a : preloc S mS) : preloc S mS :=
+protected definition neg (a : preloc S mS) : preloc S mS :=
 ⦃preloc,
   fst  := -preloc.fst a,
   snd  := preloc.snd a,
@@ -130,7 +133,7 @@ definition one : preloc S mS := π_preloc 1
 
 -- operations respect the equivalence relation 
 
-/-protected theorem add_equiv_add {a₁ b₁ a₂ b₂ : preloc S mS} (eqv1 : equiv S mS a₁ a₂) (eqv2 : equiv S mS b₁ b₂) :
+protected theorem add_equiv_add {a₁ b₁ a₂ b₂ : preloc S mS} (eqv1 : equiv S mS a₁ a₂) (eqv2 : equiv S mS b₁ b₂) :
   equiv S mS (prelocalization.add a₁ b₁) (prelocalization.add a₂ b₂) :=
   let a₁₁ := preloc.fst a₁, a₁₂ := preloc.snd a₁,
       a₂₁ := preloc.fst a₂, a₂₂ := preloc.snd a₂,
@@ -175,10 +178,10 @@ proof
    ... = 0                                                                                                                       : by blast,
   have ∀₀ s ∈ S, ∀₀ a ∈ S, s * a ∈ S, from and.elim_right (and.elim_right mS),
   show _, from exists.intro (s * t) (and.intro (this sS tS) H_zero)
-qed-/
+qed
 
 protected theorem neg_equiv_neg {a b : preloc S mS} (eqv : equiv S mS a b) :
-  equiv S mS (prelocalization.pre_neg a) (prelocalization.pre_neg b) :=
+  equiv S mS (prelocalization.neg a) (prelocalization.neg b) :=
 let a₁ := preloc.fst a, a₂ := preloc.snd a,
     b₁ := preloc.fst b, b₂ := preloc.snd b in
 proof
@@ -199,12 +202,90 @@ qed
 -- some theorems about operations
 
 protected theorem add.comm (a b : preloc S mS) : 
-  (equiv S mS) (prelocalization.add a b) (prelocalization.add b a) := -- have to show there is some s
-sorry
+  (equiv S mS) (prelocalization.add a b) (prelocalization.add b a) := 
+let a₁ := preloc.fst a, a₂ := preloc.snd a,
+    b₁ := preloc.fst b, b₂ := preloc.snd b in
+have 1 * ((a₁ * b₂ + b₁ * a₂) * (b₂ * a₂) - (b₁ * a₂ + a₁ * b₂) * (a₂ * b₂)) = 0, by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
 
 protected theorem add.assoc (a b c : preloc S mS) : 
   (equiv S mS) (prelocalization.add (prelocalization.add a b) c) (prelocalization.add a (prelocalization.add b c)) :=
-sorry
+let a₁ := preloc.fst a, a₂ := preloc.snd a, 
+    b₁ := preloc.fst b, b₂ := preloc.snd b, 
+    c₁ := preloc.fst c, c₂ := preloc.snd c in
+have 1 * (((a₁ * b₂ + b₁ * a₂) * c₂ + c₁ * (a₂ * b₂)) * (a₂ * (b₂ * c₂)) - (a₁ * (b₂ * c₂) + (b₁ * c₂+c₁ * b₂) * a₂) * ((a₂ * b₂) * c₂)) = 0, from calc
+  1 * (((a₁ * b₂ + b₁ * a₂) * c₂ + c₁ * (a₂ * b₂)) * (a₂ * (b₂ * c₂)) - (a₁ * (b₂ * c₂) + (b₁ * c₂+c₁ * b₂) * a₂) * ((a₂ * b₂) * c₂)) = 
+    ((a₁ * b₂ + b₁ * a₂) * c₂ + c₁ * (a₂ * b₂)) * (a₂ * b₂ * c₂) - (a₁ * (b₂ * c₂) + (b₁ * c₂+c₁ * b₂) * a₂) * ((a₂ * b₂ * c₂))            : by blast
+  ... = (((a₁ * b₂ + b₁ * a₂) * c₂ + c₁ * (a₂ * b₂)) - (a₁ * (b₂ * c₂) + (b₁ * c₂ + c₁ * b₂) * a₂)) * (a₂ * b₂ * c₂)                       : by rewrite[-mul_sub_right_distrib]
+  ... = ((a₁ * b₂ + b₁ * a₂) * c₂ + c₁ * (a₂ * b₂) - a₁ * (b₂ * c₂) - (b₁ * c₂ + c₁ * b₂) * a₂) * (a₂ * b₂ * c₂)                           : by blast
+  ... = ((a₁ * b₂) * c₂ + (b₁ * a₂) * c₂ + c₁ * (a₂ * b₂) - a₁ * (b₂ * c₂) - ((b₁ * c₂) * a₂ + (c₁ * b₂) * a₂)) * (a₂ * b₂ * c₂)           : by rewrite[*right_distrib]
+  ... = ((a₁ * b₂) * c₂ + (b₁ * a₂) * c₂ + c₁ * (a₂ * b₂) - a₁ * (b₂ * c₂) + ((-1) * ((b₁ * c₂) * a₂ + (c₁ * b₂) * a₂))) * (a₂ * b₂ * c₂)  : by simp
+  ... = ((a₁ * b₂) * c₂ + (b₁ * a₂) * c₂ + c₁ * (a₂ * b₂) - a₁ * (b₂ * c₂) + ((-1) * ((b₁ * c₂) * a₂) + (-1) * ((c₁ * b₂) * a₂))) * (a₂ * b₂ * c₂) 
+      : by rewrite[*left_distrib]
+  ... = 0                                                                                                                                  : by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem add.zero (a : preloc S mS) :
+  (equiv S mS) (prelocalization.add a zero) a :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a in
+have 1 * ((a₁ * 1 + 0 * a₂) * a₂ - a₁ * (a₂ * 1)) = 0, by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem add_left_inv (a : preloc S mS) :
+  (equiv S mS) (prelocalization.add (prelocalization.neg a) a) zero :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a in
+have 1 * (((neg a₁) * a₂ + a₁ * a₂) * 1 - (0 * (a₂ * a₂))) = 0, by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem mul_comm (a b : preloc S mS) :
+  (equiv S mS) (prelocalization.mul a b) (prelocalization.mul b a) :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a,
+    b₁ := preloc.fst b, b₂ := preloc.snd b in
+have 1 * ((a₁ * b₁) * (b₂ * a₂) - (b₁ * a₁) * (a₂ * b₂)) = 0, by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem mul_assoc (a b c : preloc S mS) : 
+  (equiv S mS) (prelocalization.mul (prelocalization.mul a b) c) (prelocalization.mul a (prelocalization.mul b c)) :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a, 
+    b₁ := preloc.fst b, b₂ := preloc.snd b, 
+    c₁ := preloc.fst c, c₂ := preloc.snd c in
+have 1 * (((a₁ * b₁) * c₁) * (a₂ * (b₂ * c₂)) - (a₁ * (b₁ * c₁)) * ((a₂ * b₂) * c₂)) = 0, by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem one_mul (a : preloc S mS) :
+  (equiv S mS) (prelocalization.mul one a) a :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a in
+have 1 * ((1 * a₁) * a₂ - a₁ * (1 * a₂)) = 0, by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem left_distrib (a b c : preloc S mS) :
+  (equiv S mS) 
+    (prelocalization.mul a (prelocalization.add b c)) 
+    (prelocalization.add (prelocalization.mul a b) (prelocalization.mul a c)) :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a, 
+    b₁ := preloc.fst b, b₂ := preloc.snd b, 
+    c₁ := preloc.fst c, c₂ := preloc.snd c in
+have 1 * ((a₁ * (b₁ * c₂ + c₁ * b₂)) * ((a₂ * b₂) * (a₂ * c₂)) - ((a₁ * b₁) * (a₂ * c₂) + (a₁ * c₁) * (a₂ * b₂)) * (a₂ * (b₂ * c₂))) = 0, from calc
+  1 * ((a₁ * (b₁ * c₂ + c₁ * b₂)) * ((a₂ * b₂) * (a₂ * c₂)) - ((a₁ * b₁) * (a₂ * c₂) + (a₁ * c₁) * (a₂ * b₂)) * (a₂ * (b₂ * c₂))) =
+    1 * ((a₁ * (b₁ * c₂)) * ((a₂ * b₂) * (a₂ * c₂)) + (a₁ * (c₁ * b₂)) * ((a₂ * b₂) * (a₂ * c₂)) -
+        (((a₁ * b₁) * (a₂ * c₂)) * (a₂ * (b₂ * c₂)) + ((a₁ * c₁) * (a₂ * b₂)) * (a₂ * (b₂ * c₂)))) : by rewrite[left_distrib, *right_distrib]
+  ... = 0                                                                                          : by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+
+protected theorem right_distrib (a b c : preloc S mS) :
+  (equiv S mS)
+    (prelocalization.mul (prelocalization.add a b) c)
+    (prelocalization.add (prelocalization.mul a c) (prelocalization.mul b c)) :=
+let a₁ := preloc.fst a, a₂ := preloc.snd a, 
+    b₁ := preloc.fst b, b₂ := preloc.snd b, 
+    c₁ := preloc.fst c, c₂ := preloc.snd c in
+have 1 * (((a₁ * b₂ + b₁ * a₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂)) - ((a₁ * c₁) * (b₂ * c₂) + (b₁ * c₁) * (a₂ * c₂)) * ((a₂ * b₂) * c₂)) = 0, from calc
+  1 * (((a₁ * b₂ + b₁ * a₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂)) - ((a₁ * c₁) * (b₂ * c₂) + (b₁ * c₁) * (a₂ * c₂)) * ((a₂ * b₂) * c₂)) =
+    1 * (((a₁ * b₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂)) + ((b₁ * a₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂)) - 
+      (((a₁ * c₁) * (b₂ * c₂)) * ((a₂ * b₂) * c₂) + ((b₁ * c₁) * (a₂ * c₂)) * ((a₂ * b₂) * c₂))) :
+      by rewrite[*right_distrib]
+  ... = 0 : by blast,
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
 
 end prelocalization
 
@@ -244,7 +325,7 @@ quot.lift₂
 
 protected definition neg : (loc S mS) → (loc S mS) :=
 quot.lift
-  (λ a : preloc S mS, ⟦prelocalization.pre_neg a⟧)
+  (λ a : preloc S mS, ⟦prelocalization.neg a⟧)
   (take a₁ a₂, assume H, quot.sound (prelocalization.neg_equiv_neg H))
 
 definition loc_has_add [instance] : has_add (loc S mS) :=
@@ -256,7 +337,7 @@ definition loc_has_mul [instance] : has_mul (loc S mS) :=
 definition loc_has_neg [instance] : has_neg (loc S mS) :=
   has_neg.mk localization.neg
 
-protected theorem add.comm (a b : loc S mS) : 
+protected theorem add_comm (a b : loc S mS) : 
   a + b = b + a :=
 quot.induction_on₂ a b (take u v, quot.sound !prelocalization.add.comm)
 
@@ -266,19 +347,39 @@ quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.add.assoc)
 
 protected theorem add_zero (a : loc S mS) : 
   a + 0 = a :=
-quot.induction_on a (take u, quot.sound sorry)
+quot.induction_on a (take u, quot.sound !prelocalization.add.zero)
 
 protected theorem zero_add (a : loc S mS) :
   0 + a = a :=
-!localization.add.comm ▸ !localization.add_zero
+!localization.add_comm ▸ !localization.add_zero
 
 protected theorem add_left_inv (a : loc S mS) :
   -a + a = 0 :=
-quot.induction_on a (take u, quot.sound sorry)
+quot.induction_on a (take u, quot.sound !prelocalization.add_left_inv)
 
 protected theorem mul_comm (a b : loc S mS) :
   a * b = b * a :=
-quot.induction_on₂ a b (take u v, quot.sound sorry)
+quot.induction_on₂ a b (take u v, quot.sound !prelocalization.mul_comm)
+
+protected theorem mul_assoc (a b c : loc S mS) :
+  a * b * c = a * (b * c) :=
+quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.mul_assoc)
+
+protected theorem one_mul (a : loc S mS) :
+  1 * a = a :=
+quot.induction_on a (take u, quot.sound !prelocalization.one_mul)
+
+protected theorem mul_one (a : loc S mS) :
+  a * 1 = a :=
+!localization.mul_comm ▸ !localization.one_mul
+
+protected theorem left_distrib (a b c : loc S mS) :
+  a * (b + c) = a * b + a * c :=
+quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.left_distrib)
+
+protected theorem right_distrib (a b c : loc S mS) :
+  (a + b) * c = a * c + b * c :=
+quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.right_distrib)
 
 protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
 ⦃comm_ring,
@@ -289,15 +390,15 @@ protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
   add_zero       := localization.add_zero,
   neg            := localization.neg,
   add_left_inv   := localization.add_left_inv,
-  add_comm       := localization.add.comm,
+  add_comm       := localization.add_comm,
   mul            := localization.mul,
-  mul_assoc      := sorry,
+  mul_assoc      := localization.mul_assoc,
   one            := 1,
-  one_mul        := sorry,
-  mul_one        := sorry,
-  left_distrib   := sorry,
-  right_distrib  := sorry,
-  mul_comm       := sorry⦄
+  one_mul        := localization.one_mul,
+  mul_one        := localization.mul_one,
+  left_distrib   := localization.left_distrib,
+  right_distrib  := localization.right_distrib,
+  mul_comm       := localization.mul_comm⦄ 
 
 end localization
 
