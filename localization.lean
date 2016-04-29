@@ -46,7 +46,7 @@ proof
   obtain s [(sS : s ∈ S) (Hs : s * (a₁ * b₂ - b₁ * a₂) = 0)], from H,
   have  s * (b₁ * a₂ - a₁ * b₂) = 0, from calc
     s * (b₁ * a₂ - a₁ * b₂) = s* (-(a₁ * b₂) + b₁ * a₂) : by simp
-                        ... = -s * (a₁ * b₂ - b₁ * a₂)  : prelocalization.aux
+                        ... = -s * (a₁ * b₂ - b₁ * a₂)  : aux
                         ... = 0                         : by simp,
   show _, from exists.intro s (and.intro sS (by simp))
 qed
@@ -311,6 +311,13 @@ definition loc_has_zero [instance] : has_zero (loc S mS) :=
 definition loc_has_one [instance] : has_one (loc S mS) :=
   has_one.mk (π_loc 1)
 
+protected definition inv {s : R} (sS : s ∈ S) : (loc S mS) :=
+  ⟦⦃preloc, fst := 1, snd := s, sndS := sS⦄⟧
+
+theorem one_inv_one :
+  (1 : loc S mS) = localization.inv (and.elim_left mS) :=
+sorry
+
 -- operations
 
 protected definition add : (loc S mS) → (loc S mS) → (loc S mS) :=
@@ -400,7 +407,52 @@ protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
   right_distrib  := localization.right_distrib,
   mul_comm       := localization.mul_comm⦄ 
 
-end localization
+theorem loc_eqv {a b : loc S mS} {a' b' : preloc S mS} (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
+  (a = b) = (∃₀ s ∈ S, s * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
+propext (iff.intro
+  (assume H, exact (aRep ▸ (bRep ▸ H)))
+  (assume H, aRep⁻¹ ▸ (bRep⁻¹ ▸ (sound H))))
 
--- for integral domains "∃ s" is unnecessary
--- when R is an integral domain reinstantiated as an integral domain
+-- localization in integral domains
+
+variables {D : Type} [integral_domain D] 
+          {T : set D} {mT : multiplicative T}
+
+theorem dom_loc_eqv (a b : loc T mT) (a' b' : preloc T mT) (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
+  (a = b) = ((preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
+propext (iff.intro 
+  (assume H, 
+    obtain s [sT Hs], from (loc_eqv aRep bRep) ▸ H,
+    or.elim (eq_zero_or_eq_zero_of_mul_eq_zero Hs)
+      (assume H,
+        have 0 ∉ T, from and.elim_left (and.elim_right mT),
+        have 0 ∈ T, from H ▸ sT,
+        show _, from !not.elim `0 ∉ T` `0 ∈ T`)
+      (assume H, H))
+  (assume H, 
+    have 1 * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0, from !one_mul⁻¹ ▸ H,
+    have ∃₀ s ∈ T, s * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0, from exists.intro
+      1 (and.intro (and.elim_left mT) this),
+    show _, from (loc_eqv aRep bRep)⁻¹ ▸ this))
+
+protected definition integral_domain [trans_instance] : integral_domain (loc T mT) :=
+⦃integral_domain, 
+  localization.comm_ring,
+  eq_zero_or_eq_zero_of_mul_eq_zero := sorry,
+  zero_ne_one                       := sorry⦄ 
+
+-- instantiate loc T mT as an integral domain
+
+-- field of fractions
+
+definition Frac (X : Type) [integral_domain X] :=
+  loc {x : X | x ≠ 0} 
+    (abstract 
+      sorry 
+     end)
+
+-- insantiate Frac as a field
+-- show this field is initial
+-- should we just define ℚ = Frac ℤ
+
+end localization
