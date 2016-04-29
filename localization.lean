@@ -1,3 +1,8 @@
+/-We do not allow 0 to be inverted, although this is of course not strictly necessary
+  we do not want to constantly be splitting by cases on whether we've gotten the trivial
+  ring or not after inversion.
+-/
+
 import data.set algebra.ring logic.eq
 open algebra eq.ops set quot
 
@@ -5,9 +10,9 @@ variables {R : Type} [ring_structure : comm_ring R]
 include ring_structure
 
 definition multiplicative (S : set R) :=
-  (1 ∈ S) ∧ (0 ∉ S) ∧ ∀₀ s ∈ S, ∀₀ a ∈ S, s * a ∈ S -- should we not let 0 be inverted or split by cases all the time?
+  (1 ∈ S) ∧ (0 ∉ S) ∧ ∀₀ s ∈ S, ∀₀ a ∈ S, s * a ∈ S 
 
-theorem nontrivial_multiplicative (S : set R) : -- instantiate as unit non_zero thingy?
+theorem nontrivial_multiplicative (S : set R) : 
   multiplicative S → ((1 : R) ≠ 0) :=
 assume H, not.intro(
   suppose 1 = 0,
@@ -285,7 +290,7 @@ have 1 * (((a₁ * b₂ + b₁ * a₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂))
       (((a₁ * c₁) * (b₂ * c₂)) * ((a₂ * b₂) * c₂) + ((b₁ * c₁) * (a₂ * c₂)) * ((a₂ * b₂) * c₂))) :
       by rewrite[*right_distrib]
   ... = 0 : by blast,
-show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this) 
 
 end prelocalization
 
@@ -354,7 +359,7 @@ quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.add.assoc)
 
 protected theorem add_zero (a : loc S mS) : 
   a + 0 = a :=
-quot.induction_on a (take u, quot.sound !prelocalization.add.zero)
+quot.induction_on a sorry --(take u, quot.sound !prelocalization.add.zero)
 
 protected theorem zero_add (a : loc S mS) :
   0 + a = a :=
@@ -435,24 +440,38 @@ propext (iff.intro
       1 (and.intro (and.elim_left mT) this),
     show _, from (loc_eqv aRep bRep)⁻¹ ▸ this))
 
+theorem dom_loc_eqv' (a' b' : preloc T mT) :
+  (⟦a'⟧ = ⟦b'⟧) → ((preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
+sorry
+
+/-
+
 protected definition integral_domain [trans_instance] : integral_domain (loc T mT) :=
 ⦃integral_domain, 
   localization.comm_ring,
   eq_zero_or_eq_zero_of_mul_eq_zero := sorry,
-  zero_ne_one                       := sorry⦄ 
-
--- instantiate loc T mT as an integral domain
+  zero_ne_one                       := abstract
+                                         not.intro(
+                                           suppose Hyp : (0 : loc T mT) = (1 : loc T mT),
+                                           have ⟦prelocalization.π_preloc (0 : D)⟧ = ⟦prelocalization.π_preloc (1 : D)⟧, from Hyp,
+                                           -- what is wrong here?
+                                           have 0 * 1 - 1 * 1 = 0, from (dom_loc_eqv' (prelocalization.π_preloc (0 : D)) (prelocalization.π_preloc (1 : D))) this,
+                                           have (1 : D) ≠ (0 : D), from nontrivial_multiplicative T mT,
+                                           show false, from sorry)
+                                       end⦄ -/
 
 -- field of fractions
 
 definition Frac (X : Type) [integral_domain X] :=
   loc {x : X | x ≠ 0} 
     (abstract 
-      sorry 
+      sorry
      end)
 
 -- insantiate Frac as a field
+
 -- show this field is initial
--- should we just define ℚ = Frac ℤ
+
+-- should we just define ℚ = Frac ℤ?
 
 end localization
