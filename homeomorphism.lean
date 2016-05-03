@@ -25,17 +25,33 @@ have ctsid : continuous_on id s, from continuous_on_id s,
 have continuous_on id (id ' s), from continuous_on_id (id ' s),
 show _, from and.intro ctsid (exists.intro id (and.intro Hinv this))
 
-theorem homeomorphism_comp {s t : set X} (f : X → Y) (g : Y → Z)
+-- inv_on_comp belongs in set/function
+
+lemma inv_on_comp {s : set X} (f : X → Y) (g : Y → Z) (f' : Y → X) (g' : Z → Y) :
+  inv_on f' f s (f ' s) → inv_on g' g (f ' s) (g ' (f ' s)) → inv_on (f' ∘ g') (g ∘ f) s ((g ∘ f) ' s) :=
+assume Hf'f,
+assume Hg'g,
+sorry
+
+theorem homeomorphism_comp {s t: set X} (f : X → Y) (g : Y → Z)
 (Hf : homeomorphism_on f s) (Hg : homeomorphism_on g (f ' s) ) :
   homeomorphism_on (g ∘ f) s :=
 have continuous_on f s, from and.elim_left Hf,
 have continuous_on g (f ' s), from and.elim_left Hg,
-obtain f' [(Hinv : inv_on f' f s (f ' s)) (Hf' : continuous_on f' (f ' s))], from and.elim_right Hf,
-obtain g' [(Hinv : inv_on g' g (f ' s) (g ' (f ' s))) (Hg' : continuous_on g' (g ' (f ' s)))], from and.elim_right Hg,
+obtain f' [(Hinvf : inv_on f' f s (f ' s)) (Hf' : continuous_on f' (f ' s))], from and.elim_right Hf,
+obtain g' [(Hinvg : inv_on g' g (f ' s) (g ' (f ' s))) (Hg' : continuous_on g' (g ' (f ' s)))], from and.elim_right Hg,
 have ctsfg : continuous_on (g ∘ f) s, from continuous_on_comp (and.elim_left Hf) (and.elim_left Hg),
-have invfg : inv_on (f' ∘ g') (g ∘ f) s ((g ∘ f) ' s), from sorry,
-have ctsg' : continuous_on g' ((g ∘ f) ' s), from sorry,
-have continuous_on f' (g' ' ((g ∘ f) ' s)), from sorry,
+have invfg : inv_on (f' ∘ g') (g ∘ f) s ((g ∘ f) ' s), from inv_on_comp f g f' g' Hinvf Hinvg,
+have ctsg' : continuous_on g' ((g ∘ f) ' s), by rewrite[image_comp]; apply Hg',
+have f ' s = g' ' ((g ∘ f) ' s), from ext(take x, iff.intro
+  (suppose x ∈ f ' s, 
+    obtain z [(zs : z ∈ s) (fzx : f z = x)], from this,
+    have Hgfz : (g ∘ f) z ∈ (g ∘ f) ' s, from exists.intro z (and.intro zs rfl),
+    have g' (g (f z)) = x, from sorry, -- use inverse property
+    have ∃ y, y ∈ ((g ∘ f) ' s) ∧ g' y = x, from exists.intro (g (f z)) (and.intro Hgfz this), 
+    show _, from this)
+  (suppose x ∈ g' ' ((g ∘ f) ' s), sorry)),
+have continuous_on f' (g' ' ((g ∘ f) ' s)), from this ▸ Hf',
 have continuous_on (f' ∘ g') ((g ∘ f) ' s), from continuous_on_comp ctsg' this,
 show _, from and.intro ctsfg (exists.intro (f' ∘ g') (and.intro invfg this))
 
@@ -76,6 +92,9 @@ have inv_on (f' ∘ g') (g ∘ f) s r, from sorry,
 show ∃ h, homeomorphism_between h s r, from exists.intro (g ∘ f)
   (and.intro H1 (exists.intro (f' ∘ g') (and.intro this H2)))
 
+
+-- instantiate homeomorphism as equivalence 
+
 definition open_map_on (f : X → Y) (s : set X) : Prop :=
   ∀ t, t ⊆ s → Open t → Open (f ' t)
 
@@ -90,7 +109,7 @@ proof
   take t, assume ts, assume Opt,
   obtain A [OpA HA], from ctsg t Opt,
   have Open (A ∩ f ' s), from Open_inter OpA H1,
-  have preimage g t ∩ f ' s = f ' t, from ext(take x, iff.intro
+  have H : preimage g t ∩ f ' s = f ' t, from ext(take x, iff.intro
     (suppose x ∈ preimage g t ∩ f ' s,
       have g x ∈ t, from mem_of_mem_preimage (and.elim_left this),
       have left_inv_on f g (f ' s), from and.elim_right invg, 
@@ -103,7 +122,7 @@ proof
       have g (f y) = y, from this (ts yt),
       have g x ∈ t, by rewrite[-fyx, this]; exact yt,
       show _, from and.intro this `x ∈ f ' s`)),
-  show Open (f ' t), from this ▸ HA ▸ `Open (A ∩ f ' s)`
+  show Open (f ' t), by rewrite[-H, -HA]; exact `Open (A ∩ f ' s)`
 qed
 
 theorem inj_open_map_on_imp_homeo_on (f : X → Y) (s : set X) :

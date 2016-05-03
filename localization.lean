@@ -31,7 +31,7 @@ private definition equiv (S : set R) (mS : multiplicative S) (a b : preloc S mS)
 
 namespace prelocalization
 
-theorem equiv.refl [refl] (a : preloc S mS) : 
+/-theorem equiv.refl [refl] (a : preloc S mS) : 
   equiv S mS a a :=
 have 1 ∈ S, from and.elim_left mS,
 exists.intro 1 (and.intro `1 ∈ S` (by simp))
@@ -89,7 +89,7 @@ proof
                                    ... = s * t * (a₁ * c₂ * b₂ - a₂ * c₁ * b₂)       : by blast
                                    ... = 0                                           : this, 
   exists.intro (s*t*b₂) (and.intro `s * t * b₂ ∈ S` this)
-qed
+qed -/
 
 check equiv S mS
 
@@ -132,13 +132,15 @@ definition π_preloc (a : R) : preloc S mS :=
   sndS := and.elim_left mS
 ⦄
 
-definition zero : preloc S mS := π_preloc 0
+definition preloc_has_zero [instance] : has_zero (preloc S mS) :=
+  has_zero.mk (π_preloc 0)
 
-definition one : preloc S mS := π_preloc 1
+definition preloc_has_one [instance] : has_one (preloc S mS) :=
+  has_one.mk (π_preloc 1)
 
 -- operations respect the equivalence relation 
 
-protected theorem add_equiv_add {a₁ b₁ a₂ b₂ : preloc S mS} (eqv1 : equiv S mS a₁ a₂) (eqv2 : equiv S mS b₁ b₂) :
+/-protected theorem add_equiv_add {a₁ b₁ a₂ b₂ : preloc S mS} (eqv1 : equiv S mS a₁ a₂) (eqv2 : equiv S mS b₁ b₂) :
   equiv S mS (prelocalization.add a₁ b₁) (prelocalization.add a₂ b₂) :=
   let a₁₁ := preloc.fst a₁, a₁₂ := preloc.snd a₁,
       a₂₁ := preloc.fst a₂, a₂₂ := preloc.snd a₂,
@@ -290,7 +292,7 @@ have 1 * (((a₁ * b₂ + b₁ * a₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂))
       (((a₁ * c₁) * (b₂ * c₂)) * ((a₂ * b₂) * c₂) + ((b₁ * c₁) * (a₂ * c₂)) * ((a₂ * b₂) * c₂))) :
       by rewrite[*right_distrib]
   ... = 0 : by blast,
-show _, from exists.intro 1 (and.intro (and.elim_left mS) this) 
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)-/ 
 
 end prelocalization
 
@@ -359,7 +361,7 @@ quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.add.assoc)
 
 protected theorem add_zero (a : loc S mS) : 
   a + 0 = a :=
-quot.induction_on a sorry --(take u, quot.sound !prelocalization.add.zero)
+quot.induction_on a (take u, quot.sound !prelocalization.add.zero)
 
 protected theorem zero_add (a : loc S mS) :
   0 + a = a :=
@@ -393,7 +395,7 @@ protected theorem right_distrib (a b c : loc S mS) :
   (a + b) * c = a * c + b * c :=
 quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.right_distrib)
 
-protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
+/-protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
 ⦃comm_ring,
   add            := localization.add,
   add_assoc      := localization.add_assoc,
@@ -410,7 +412,26 @@ protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
   mul_one        := localization.mul_one,
   left_distrib   := localization.left_distrib,
   right_distrib  := localization.right_distrib,
-  mul_comm       := localization.mul_comm⦄ 
+  mul_comm       := localization.mul_comm⦄ -/
+
+protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
+⦃comm_ring,
+  add            := sorry,
+  add_assoc      := sorry,
+  zero           := 0,
+  zero_add       := sorry,
+  add_zero       := sorry,
+  neg            := sorry,
+  add_left_inv   := sorry,
+  add_comm       := sorry,
+  mul            := sorry,
+  mul_assoc      := sorry,
+  one            := 1,
+  one_mul        := sorry,
+  mul_one        := sorry,
+  left_distrib   := sorry,
+  right_distrib  := sorry,
+  mul_comm       := sorry⦄ 
 
 theorem loc_eqv {a b : loc S mS} {a' b' : preloc S mS} (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
   (a = b) = (∃₀ s ∈ S, s * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
@@ -423,7 +444,7 @@ propext (iff.intro
 variables {D : Type} [integral_domain D] 
           {T : set D} {mT : multiplicative T}
 
-theorem dom_loc_eqv (a b : loc T mT) (a' b' : preloc T mT) (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
+/--theorem dom_loc_eqv (a b : loc T mT) (a' b' : preloc T mT) (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
   (a = b) = ((preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
 propext (iff.intro 
   (assume H, 
@@ -438,27 +459,37 @@ propext (iff.intro
     have 1 * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0, from !one_mul⁻¹ ▸ H,
     have ∃₀ s ∈ T, s * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0, from exists.intro
       1 (and.intro (and.elim_left mT) this),
-    show _, from (loc_eqv aRep bRep)⁻¹ ▸ this))
+    show _, from (loc_eqv aRep bRep)⁻¹ ▸ this))-/
 
-theorem dom_loc_eqv' (a' b' : preloc T mT) :
-  (⟦a'⟧ = ⟦b'⟧) → ((preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
+theorem dom_loc_eqv (a b : loc T mT) :
+  (a = b) → ∃ a' b' : preloc T mT, a = ⟦a'⟧ ∧ b = ⟦b'⟧ ∧ preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a' = 0 := 
 sorry
-
-/-
 
 protected definition integral_domain [trans_instance] : integral_domain (loc T mT) :=
 ⦃integral_domain, 
   localization.comm_ring,
-  eq_zero_or_eq_zero_of_mul_eq_zero := sorry,
+  eq_zero_or_eq_zero_of_mul_eq_zero := abstract
+                                        take a b,
+                                        suppose comm_ring.mul a b = 0, 
+                                        show a = 0 ∨ b = 0, from sorry
+                                       end,
   zero_ne_one                       := abstract
                                          not.intro(
-                                           suppose Hyp : (0 : loc T mT) = (1 : loc T mT),
-                                           have ⟦prelocalization.π_preloc (0 : D)⟧ = ⟦prelocalization.π_preloc (1 : D)⟧, from Hyp,
-                                           -- what is wrong here?
-                                           have 0 * 1 - 1 * 1 = 0, from (dom_loc_eqv' (prelocalization.π_preloc (0 : D)) (prelocalization.π_preloc (1 : D))) this,
-                                           have (1 : D) ≠ (0 : D), from nontrivial_multiplicative T mT,
-                                           show false, from sorry)
-                                       end⦄ -/
+                                           suppose (0 : loc T mT) = (1 : loc T mT),
+                                           obtain t [(tT : t ∈ T) (Ht : t * (0 * 1 - 1 * 1) = 0)], from exact this,
+                                           have 0 * 1 - 1 * 1 = 0, from 
+                                             proof
+                                             or.elim (eq_zero_or_eq_zero_of_mul_eq_zero Ht)
+                                             (assume H, !not.elim (and.elim_left (and.elim_right mT)) (H ▸ tT))
+                                             (assume H, H)
+                                             qed,
+                                           have 1 = (0 : D), from calc
+                                                1 = -(0 * 1 - 1 * 1) : by blast
+                                              ... = -0               : this
+                                              ... = 0                : by simp,
+                                           have 1 ≠ 0, from (nontrivial_multiplicative T) mT,
+                                           show false, from absurd `1 = 0` this)
+                                       end⦄ 
 
 -- field of fractions
 
