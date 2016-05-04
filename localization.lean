@@ -31,7 +31,7 @@ private definition equiv (S : set R) (mS : multiplicative S) (a b : preloc S mS)
 
 namespace prelocalization
 
-/-theorem equiv.refl [refl] (a : preloc S mS) : 
+theorem equiv.refl [refl] (a : preloc S mS) : 
   equiv S mS a a :=
 have 1 ∈ S, from and.elim_left mS,
 exists.intro 1 (and.intro `1 ∈ S` (by simp))
@@ -89,7 +89,7 @@ proof
                                    ... = s * t * (a₁ * c₂ * b₂ - a₂ * c₁ * b₂)       : by blast
                                    ... = 0                                           : this, 
   exists.intro (s*t*b₂) (and.intro `s * t * b₂ ∈ S` this)
-qed -/
+qed 
 
 check equiv S mS
 
@@ -140,7 +140,7 @@ definition preloc_has_one [instance] : has_one (preloc S mS) :=
 
 -- operations respect the equivalence relation 
 
-/-protected theorem add_equiv_add {a₁ b₁ a₂ b₂ : preloc S mS} (eqv1 : equiv S mS a₁ a₂) (eqv2 : equiv S mS b₁ b₂) :
+protected theorem add_equiv_add {a₁ b₁ a₂ b₂ : preloc S mS} (eqv1 : equiv S mS a₁ a₂) (eqv2 : equiv S mS b₁ b₂) :
   equiv S mS (prelocalization.add a₁ b₁) (prelocalization.add a₂ b₂) :=
   let a₁₁ := preloc.fst a₁, a₁₂ := preloc.snd a₁,
       a₂₁ := preloc.fst a₂, a₂₂ := preloc.snd a₂,
@@ -292,7 +292,7 @@ have 1 * (((a₁ * b₂ + b₁ * a₂) * c₁) * ((a₂ * c₂) * (b₂ * c₂))
       (((a₁ * c₁) * (b₂ * c₂)) * ((a₂ * b₂) * c₂) + ((b₁ * c₁) * (a₂ * c₂)) * ((a₂ * b₂) * c₂))) :
       by rewrite[*right_distrib]
   ... = 0 : by blast,
-show _, from exists.intro 1 (and.intro (and.elim_left mS) this)-/ 
+show _, from exists.intro 1 (and.intro (and.elim_left mS) this)
 
 end prelocalization
 
@@ -395,7 +395,7 @@ protected theorem right_distrib (a b c : loc S mS) :
   (a + b) * c = a * c + b * c :=
 quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.right_distrib)
 
-/-protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
+protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
 ⦃comm_ring,
   add            := localization.add,
   add_assoc      := localization.add_assoc,
@@ -412,9 +412,9 @@ quot.induction_on₃ a b c (take u v w, quot.sound !prelocalization.right_distri
   mul_one        := localization.mul_one,
   left_distrib   := localization.left_distrib,
   right_distrib  := localization.right_distrib,
-  mul_comm       := localization.mul_comm⦄ -/
+  mul_comm       := localization.mul_comm⦄
 
-protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
+/-protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
 ⦃comm_ring,
   add            := sorry,
   add_assoc      := sorry,
@@ -431,7 +431,7 @@ protected definition comm_ring [trans_instance] : comm_ring (loc S mS) :=
   mul_one        := sorry,
   left_distrib   := sorry,
   right_distrib  := sorry,
-  mul_comm       := sorry⦄ 
+  mul_comm       := sorry⦄ -/
 
 theorem loc_eqv {a b : loc S mS} {a' b' : preloc S mS} (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
   (a = b) = (∃₀ s ∈ S, s * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
@@ -444,7 +444,7 @@ propext (iff.intro
 variables {D : Type} [integral_domain D] 
           {T : set D} {mT : multiplicative T}
 
-/--theorem dom_loc_eqv (a b : loc T mT) (a' b' : preloc T mT) (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
+theorem dom_loc_eqv (a b : loc T mT) (a' b' : preloc T mT) (aRep : a = ⟦a'⟧) (bRep : b = ⟦b'⟧) :
   (a = b) = ((preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0) :=
 propext (iff.intro 
   (assume H, 
@@ -459,9 +459,9 @@ propext (iff.intro
     have 1 * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0, from !one_mul⁻¹ ▸ H,
     have ∃₀ s ∈ T, s * (preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a') = 0, from exists.intro
       1 (and.intro (and.elim_left mT) this),
-    show _, from (loc_eqv aRep bRep)⁻¹ ▸ this))-/
+    show _, from (loc_eqv aRep bRep)⁻¹ ▸ this))
 
-theorem dom_loc_eqv (a b : loc T mT) :
+theorem dom_loc_eqv' (a b : loc T mT) :
   (a = b) → ∃ a' b' : preloc T mT, a = ⟦a'⟧ ∧ b = ⟦b'⟧ ∧ preloc.fst a' * preloc.snd b' - preloc.fst b' * preloc.snd a' = 0 := 
 sorry
 

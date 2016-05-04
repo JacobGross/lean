@@ -55,7 +55,7 @@ have continuous_on f' (g' ' ((g ∘ f) ' s)), from this ▸ Hf',
 have continuous_on (f' ∘ g') ((g ∘ f) ' s), from continuous_on_comp ctsg' this,
 show _, from and.intro ctsfg (exists.intro (f' ∘ g') (and.intro invfg this))
 
-theorem homeo_inv_homeo {s : set X} {t : set Y} (f : X → Y) (Hf : homeomorphism_between f s t):
+theorem homeo_inv_homeo {s : set X} {t : set Y} (f : X → Y) (Hf : homeomorphism_between f s t) :
   ∃ g, inv_on g f s t ∧ continuous_on g t → homeomorphism g :=
 sorry
 -- move inv_on_id to function (set?) file
@@ -93,7 +93,7 @@ show ∃ h, homeomorphism_between h s r, from exists.intro (g ∘ f)
   (and.intro H1 (exists.intro (f' ∘ g') (and.intro this H2)))
 
 
--- instantiate homeomorphism as equivalence 
+-- instantiate homeomorphism as equivalence... why is that wrong?
 
 definition open_map_on (f : X → Y) (s : set X) : Prop :=
   ∀ t, t ⊆ s → Open t → Open (f ' t)
