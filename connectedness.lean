@@ -1,5 +1,5 @@
-import data.set theories.topology.basic data.bool
-open algebra eq.ops set topology nat bool
+import data.set theories.topology.basic data.bool theories.topology.continuous theories.topology.order_topology
+open algebra eq.ops set topology nat bool order_topology
 
 -- shorthanded interated connectives
 
@@ -37,29 +37,112 @@ proposition exists.intro2 (x y : A) {P : A → A → Prop} (H : P x y) :
   ∃ a b, P a b :=
 exists.intro x (exists.intro y H)
 
+/-
+
+- move this to the bool file
+
+- this was necessary so that we can put the linear order topology on 
+the booleans to make sense of a continuous function f : set X → bool
+
+-/
+
+namespace bool
+
+protected definition le : bool → bool → Prop 
+| ff ff := true
+| ff tt := true
+| tt ff := false
+| tt tt := true
+
+protected theorem le_refl : 
+  ∀ a, bool.le a a
+| ff := trivial
+| tt := trivial
+
+protected theorem le_trans : 
+  ∀ a b c, bool.le a b → bool.le b c → bool.le a c 
+| ff ff ff := take ab bc, trivial
+| ff ff tt := take ab bc, trivial
+| ff tt ff := take ab bc, trivial
+| ff tt tt := take ab bc, trivial
+| tt ff ff := take ab bc, !not.elim (λ H, H) ab
+| tt ff tt := take ab bc, trivial
+| tt tt ff := take ab bc, !not.elim (λ H, H) bc
+| tt tt tt := take ab bc, trivial
+
+protected theorem le_antisymm :
+  ∀ a b, bool.le a b → bool.le b a → a = b 
+| ff ff := take ab ba, rfl
+| ff tt := take ab ba, !not.elim (λ H, H) ba
+| tt ff := take ab ba, !not.elim (λ H, H) ab
+| tt tt := take ab ba, rfl
+
+protected definition lt : bool → bool → Prop 
+| ff ff := false
+| ff tt := true
+| tt ff := false
+| tt tt := false
+
+protected theorem le_iff_lt_or_eq :
+  ∀ a b, bool.le a b ↔ bool.lt a b ∨ a = b 
+| ff ff := iff.intro
+            (assume H, or.inr rfl)
+            (assume H, or.elim H 
+              (assume H', !not.elim (take H₁, H₁) H')
+              (assume H', trivial))
+| ff tt := iff.intro
+            (assume H, or.inl trivial)
+            (assume H, trivial)
+| tt ff := iff.intro
+            (assume H, !not.elim (take H', H') H)
+            (assume H, or.elim H
+              (assume H', !not.elim (take H₁, H₁) H')
+              (assume H', !not.elim (by blast) H'))
+| tt tt := iff.intro
+            (assume H, or.inr rfl)
+            (assume H, or.elim H 
+              (assume H', !not.elim (take H₁, H₁) H')
+              (assume H', trivial))
+
+protected theorem lt_irrefl :
+  ∀ a, ¬ bool.lt a a 
+| ff := assume H, H
+| tt := assume H, H
+
+protected theorem le_total :
+  ∀ a b, bool.le a b ∨ bool.le b a 
+| ff ff := or.inl trivial
+| ff tt := or.inl trivial
+| tt ff := or.inr trivial 
+| tt tt := or.inl trivial
+
+definition linear_strong_order_pair.of_bool [trans_instance] :
+  linear_strong_order_pair bool :=
+⦃linear_strong_order_pair, 
+ le              := bool.le,
+ le_refl         := bool.le_refl,
+ le_trans        := bool.le_trans,
+ le_antisymm     := bool.le_antisymm,
+ lt              := bool.lt,
+ le_iff_lt_or_eq := bool.le_iff_lt_or_eq,
+ lt_irrefl       := bool.lt_irrefl,
+ le_total        := bool.le_total⦄
+
+end bool
+
 -- connectedness begins here
 
 namespace connectedness
+open bool
 
 variables {X : Type} [topology X]
 
 definition connected (s : set X) :=
-  ¬(∃ A B, Open A ∧ Open B  ∧ s ⊆ A ∪ B ∧ A ∩ B ∩ s = ∅ ∧ A ∩ s ≠ ∅ ∧ B ∩ s ≠ ∅)
-
-theorem connected.intro (s : set X) :
-  (∀ A B, Open A → Open B →  A ∩ s ≠ ∅  → B ∩ s ≠ ∅ → A ∩ B ∩ s = ∅ → s ⊆ A ∪ B → false) → connected s :=
-assume H, assume H',
-obtain A B [OpA OpB sAB ABs As Bs], from H',
-show _, from H A B OpA OpB As Bs ABs sAB
-
-theorem connected.elim (s : set X) :
-  connected s → (∀ A B, Open A → Open B →  A ∩ s ≠ ∅  → B ∩ s ≠ ∅ → A ∩ B ∩ s = ∅ → s ⊆ A ∪ B → false) :=
-assume H, take A B, assume OpA, assume OpB, assume As, assume Bs, assume ABs, assume sAB,
-show _, from absurd (exists.intro2 A B (and.intro2 OpA OpB (and.intro3 sAB ABs As Bs))) H
+  ∀ A B, Open A → Open B →  A ∩ s ≠ ∅  → B ∩ s ≠ ∅ → A ∩ B ∩ s = ∅ → s ⊆ A ∪ B → false
 
 theorem connected_empty : 
   connected (∅ : set X) :=
-!connected.intro (λ A B OpA OpB As Bs ABs sAB, absurd !inter_empty As) 
+take A B OpA OpB As Bs ABs sAB, absurd !inter_empty As
 
 lemma mem_mem_singleton {A : set X} {a x : X} (aA : a ∈ A) (ax : a ∈ '{x}):
   x ∈ A :=
@@ -67,12 +150,12 @@ by rewrite[-(eq_of_mem_singleton ax)]; exact aA
 
 theorem connected_sing (x : X) :
  connected '{x} :=
-!connected.intro (λ A B OpA OpB As Bs ABs sAB,
+take A B OpA OpB As Bs ABs sAB,
 obtain a [(aA : a ∈ A) (ax : a ∈ '{x})], from exists_mem_of_ne_empty As,
 have xA : x ∈ A, from mem_mem_singleton aA ax,
 obtain b [(bB : b ∈ B) (bx : b ∈ '{x})], from exists_mem_of_ne_empty Bs,
 have xB : x ∈ B, from mem_mem_singleton bB bx,
-absurd (and.intro2' xA xB !mem_singleton) (ABs⁻¹ ▸ !not_mem_empty))
+absurd (and.intro2' xA xB !mem_singleton) (ABs⁻¹ ▸ !not_mem_empty)
 
 section
  open classical
@@ -117,11 +200,11 @@ have (-A) ∩ (-B) ∩ s = ∅, from eq_empty_of_forall_not_mem(
    or.elim (sAB (and.elim_right tABs))
      (suppose t ∈ A, absurd this (and.elim₁₁ tABs))
      (suppose t ∈ B, absurd this (and.elim₁₂ tABs))),
-show _, from !connected.elim H (-A) (-B) clA clB HnA HnB this snAnB
+show _, from H (-A) (-B) clA clB HnA HnB this snAnB
 
 theorem closed_connected (s : set X) :
   ¬(∃ A B, closed A ∧ closed B ∧ s ⊆ A ∪ B ∧ A ∩ B ∩ s = ∅ ∧ A ∩ s ≠ ∅ ∧ B ∩ s ≠ ∅) → connected s :=
-assume H, !connected.intro(λ A B OpA OpB As Bs ABs sAB,
+assume H, take A B OpA OpB As Bs ABs sAB,
 obtain x [xB xs], from exists_mem_of_ne_empty Bs,
 obtain y [yA ys], from exists_mem_of_ne_empty As,
 have HnA : (-A) ∩ s ≠ ∅, from aux1 Bs ABs,
@@ -142,51 +225,13 @@ have nAnBs : (-A) ∩ (-B) ∩ s = ∅, from eq_empty_of_forall_not_mem(
 have ∃ A B, closed A ∧ closed B ∧ s ⊆ A ∪ B ∧ A ∩ B ∩ s = ∅ ∧ A ∩ s ≠ ∅ ∧ B ∩ s ≠ ∅, from 
   exists.intro2 (-A) (-B) (and.intro2 (closed_compl OpA) (closed_compl OpB)
     (and.intro3 snAnB  nAnBs HnA HnB)), 
-show false, from H this)
+show false, from H this
 
-theorem connected_cUnion (s : ℕ → set X) :
-  (∀ i, connected (s i)) → (⋂ i, s i) ≠ ∅ → connected (⋃ i, s i) :=
-assume H, assume neq,
-!connected.intro(λ A B OpA OpB As Bs ABs sAB,
-have (⋃ i, A ∩ B ∩ (s i)) = ∅, by rewrite[-inter_distrib_Union_left]; apply ABs, 
-have disji : ∀ i, A ∩ B ∩ (s i) = ∅, from take i,
-  have A ∩ B ∩ (s i) ⊆ ⋃ i, A ∩ B ∩ (s i), from 
-    take x, assume H, exists.intro i H,
-  eq_empty_of_subset_empty (`(⋃ i, A ∩ B ∩ (s i)) = ∅` ▸ this),
-have siAB : ∀ i, (s i) ⊆ A ∪ B, from 
-  take i, take y, assume ysi,
-  show y ∈ A ∪ B, from sAB y (exists.intro i ysi),
-obtain x Hx, from exists_mem_of_ne_empty neq,
-have x ∈ A ∪ B, from sAB (exists.intro 0 (Hx 0)), 
-or.elim this
-  (assume xA,
-   obtain y [yB ys], from exists_mem_of_ne_empty Bs,
-   obtain j (ysj : y ∈ s j), from ys,
-   have Bsj : B ∩ s j ≠ ∅, from ne_empty_of_mem (and.intro yB ysj),
-   have Asj : A ∩ s j ≠ ∅, from ne_empty_of_mem (and.intro xA (Hx j)),
-   show false, from !connected.elim (H j) A B OpA OpB Asj Bsj (disji j) (siAB j))
-  (assume xB,
-   obtain y [yA ys], from exists_mem_of_ne_empty As,
-   obtain j (ysj : y ∈ s j), from ys,
-   have Asj : A ∩ s j ≠ ∅, from ne_empty_of_mem (and.intro yA ysj),
-   have Bsj : B ∩ s j ≠ ∅, from ne_empty_of_mem (and.intro xB (Hx j)),
-   show false, from !connected.elim (H j) A B OpA OpB Asj Bsj (disji j) (siAB j)))
-
-theorem connected_union (s t : set X) :
- connected s → connected t → s ∩ t ≠ ∅ → connected (s ∪ t) :=
-assume cs, assume ct, assume st, 
-have ∀ i, connected (bin_ext s t i),
-  by intro i; cases i; exact cs; exact ct,
-have (⋂ i, bin_ext s t i) ≠ ∅, from !Inter_bin_ext⁻¹ ▸ st,
-have connected (⋃ i, bin_ext s t i), from 
-  !connected_cUnion `∀ i, connected (bin_ext s t i)` this,
-show _, from !Union_bin_ext ▸ this
-
-theorem connected_sUnion (S : set (set X)) :
+theorem connected_sUnion {S : set (set X)} :
   (∀₀ s ∈ S, connected s) → ⋂₀ S ≠ ∅ → connected ⋃₀ S := 
 if HS : S ≠ ∅ then
 assume H, assume neq,
-!connected.intro(λ A B OpA OpB As Bs ABs sAB,
+take A B OpA OpB As Bs ABs sAB,
 have disj : ∀₀ s ∈ S, A ∩ B ∩ s = ∅, from 
   take s, assume sS,
   have A ∩ B ∩ s ⊆ A ∩ B ∩ ⋃₀ S, from 
@@ -211,24 +256,45 @@ or.elim this
    have Bst : B ∩ t ≠ ∅, from ne_empty_of_mem (and.intro yB yt),
    have x ∈ t, from (sInter_subset_of_mem tS) Hx,
    have Ast : A ∩ t ≠ ∅, from ne_empty_of_mem (and.intro xA (this)),
-   show false, from !connected.elim (H tS) A B OpA OpB Ast Bst (disj tS) (HsAB tS))
+   show false, from (H tS) A B OpA OpB Ast Bst (disj tS) (HsAB tS))
   (assume xB,
    obtain y [(yA : y ∈ A) (ys : y ∈ ⋃₀ S)], from exists_mem_of_ne_empty As,
    obtain t [(tS : t ∈ S) (yt : y ∈ t)], from ys,
    have Ast : A ∩ t ≠ ∅, from ne_empty_of_mem (and.intro yA yt),
    have x ∈ t, from (sInter_subset_of_mem tS) Hx,
    have Bst : B ∩ t ≠ ∅, from ne_empty_of_mem (and.intro xB (this)),
-   show false, from !connected.elim (H tS) A B OpA OpB Ast Bst (disj tS) (HsAB tS)))
+   show false, from (H tS) A B OpA OpB Ast Bst (disj tS) (HsAB tS))
 else
   assume H, assume neq,
   by rewrite[(not_not_elim HS), sUnion_empty]; apply connected_empty
+
+theorem connected_Union {I : Type} (s : I → set X) :
+  (∀ i, connected (s i)) → (⋂ i, s i) ≠ ∅ → connected (⋃ i, s i) :=
+suppose Hs : ∀ i, connected (s i), 
+suppose ne : (⋂ i, s i) ≠ ∅,
+have Hs'univ : ∀₀ x ∈ (s ' univ), connected x, from 
+  take x, suppose x ∈ (s ' univ),
+  obtain i [(Hi : i ∈ univ) (six : s i = x)], from this,
+  show connected x, by rewrite[-six]; apply (Hs i),
+have ⋂₀ (s ' univ) ≠ ∅, from !Inter_eq_sInter_image ▸ ne,
+have connected ⋃₀ (s ' univ), from connected_sUnion Hs'univ this,
+show _, by rewrite[Union_eq_sUnion_image]; exact this
+
+theorem connected_union (s t : set X) :
+ connected s → connected t → s ∩ t ≠ ∅ → connected (s ∪ t) :=
+assume cs, assume ct, assume st, 
+have H : ∀ i, connected (bin_ext s t i),
+  by intro i; cases i; exact cs; exact ct,
+have (⋂ i, bin_ext s t i) ≠ ∅, from !Inter_bin_ext⁻¹ ▸ st,
+have connected (⋃ i, bin_ext s t i), from !connected_Union H this,
+show _, from !Union_bin_ext ▸ this
 
 definition clopen (s : set X) :=
   Open s ∧ closed s
 
 theorem connected_no_clopen :
  ¬(∃ t, clopen t ∧ t ⊂ (@univ X) ∧ t ≠ ∅) → connected (@univ X) :=
-assume H, !connected.intro(λ A B OpA OpB As Bs ABs sAB,
+assume H, take A B OpA OpB As Bs ABs sAB,
  have H1 : A ∪ B = univ, from eq_univ_of_univ_subset sAB,
  have H2 : A ∩ B = ∅, by rewrite[-inter_univ]; exact ABs,
  have -A = B,
@@ -248,7 +314,7 @@ have (-A) ≠ ∅, from not.intro(
   show false, from absurd `-A = ∅` (`-A = B`⁻¹ ▸ this)),
 have ∃ t, clopen t ∧ t ⊂ univ ∧ t ≠ ∅, from exists.intro (-A)
  (and.intro2 `clopen (-A)` `(-A) ⊂ univ` this),
-show false, from absurd this H)
+show false, from absurd this H
 
 theorem no_clopen_connected :
   connected (@univ X) →  ¬(∃ t, clopen t ∧ t ⊂ (@univ X) ∧ t ≠ ∅) :=
@@ -265,9 +331,15 @@ have H4 : (-t) ∩ univ ≠ ∅, from not.intro(
   show false, from absurd ( !compl_compl ▸ this) `t ≠ univ`),
 have H5 : t ∩ (-t) ∩ univ = ∅, by rewrite[inter_univ, inter_compl_self],
 have H6 : univ ⊆ t ∪ (-t), by rewrite[union_compl_self]; exact λx H, H,
-show false, from !connected.elim H t (-t) H1 H2 H3 H4 H5 H6
+show false, from H t (-t) H1 H2 H3 H4 H5 H6
 
--- show continuous image of connected set is connected and we're done
+theorem connected_const (S : set X) : 
+  connected S → (∀ P : X → bool, continuous_on P S → ∃ c, ∀₀ s ∈ S, P s = c) :=
+sorry
+
+theorem const_connected (S : set X) : 
+ (∀ P : X → bool, continuous_on P S → ∃ c, ∀₀ s ∈ S, P s = c) → connected S :=
+sorry
 
 end
 
