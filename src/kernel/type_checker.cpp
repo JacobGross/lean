@@ -11,6 +11,7 @@ Author: Leonardo de Moura
 #include "util/flet.h"
 #include "util/sstream.h"
 #include "util/scoped_map.h"
+#include "util/fresh_name.h"
 #include "kernel/type_checker.h"
 #include "kernel/default_converter.h"
 #include "kernel/expr_maps.h"
@@ -40,39 +41,39 @@ unsigned get_arity(expr type) {
     return r;
 }
 
-expr mk_aux_type_metavar_for(name_generator & ngen, expr const & t) {
-    expr new_type = replace_range(t, mk_sort(mk_meta_univ(ngen.next())));
-    name n        = ngen.next();
+expr mk_aux_type_metavar_for(expr const & t) {
+    expr new_type = replace_range(t, mk_sort(mk_meta_univ(mk_fresh_name())));
+    name n        = mk_fresh_name();
     return mk_metavar(n, new_type);
 }
 
-expr mk_aux_metavar_for(name_generator & ngen, expr const & t) {
+expr mk_aux_metavar_for(expr const & t) {
     unsigned num  = get_arity(t);
-    expr r        = mk_app_vars(mk_aux_type_metavar_for(ngen, t), num);
+    expr r        = mk_app_vars(mk_aux_type_metavar_for(t), num);
     expr new_type = replace_range(t, r);
-    name n        = ngen.next();
+    name n        = mk_fresh_name();
     return mk_metavar(n, new_type);
 }
 
-expr mk_pi_for(name_generator & ngen, expr const & meta) {
+expr mk_pi_for(expr const & meta) {
     lean_assert(is_meta(meta));
     buffer<expr> margs;
     expr const & m     = get_app_args(meta, margs);
     expr const & mtype = mlocal_type(m);
-    expr maux1         = mk_aux_type_metavar_for(ngen, mtype);
+    expr maux1         = mk_aux_type_metavar_for(mtype);
     expr dontcare;
-    expr tmp_pi        = mk_pi(ngen.next(), mk_app_vars(maux1, margs.size()), dontcare); // trick for "extending" the context
+    expr tmp_pi        = mk_pi(mk_fresh_name(), mk_app_vars(maux1, margs.size()), dontcare); // trick for "extending" the context
     expr mtype2        = replace_range(mtype, tmp_pi); // trick for "extending" the context
-    expr maux2         = mk_aux_type_metavar_for(ngen, mtype2);
+    expr maux2         = mk_aux_type_metavar_for(mtype2);
     expr A             = mk_app(maux1, margs);
     margs.push_back(Var(0));
     expr B             = mk_app(maux2, margs);
-    return mk_pi(ngen.next(), A, B);
+    return mk_pi(mk_fresh_name(), A, B);
 }
 
 optional<expr> type_checker::expand_macro(expr const & m) {
     lean_assert(is_macro(m));
-    return macro_def(m).expand(m, m_tc_ctx);
+    return macro_def(m).expand(m, m_old_tc_ctx);
 }
 
 /**
@@ -80,7 +81,7 @@ optional<expr> type_checker::expand_macro(expr const & m) {
    It also returns the fresh local constant.
 */
 pair<expr, expr> type_checker::open_binding_body(expr const & e) {
-    expr local     = mk_local(m_gen.next(), binding_name(e), binding_domain(e), binding_info(e));
+    expr local     = mk_local(mk_fresh_name(), binding_name(e), binding_domain(e), binding_info(e));
     return mk_pair(instantiate(binding_body(e), local), local);
 }
 
@@ -104,7 +105,7 @@ pair<expr, constraint_seq> type_checker::ensure_sort_core(expr e, expr const & s
     if (is_sort(ecs.first)) {
         return ecs;
     } else if (is_meta(ecs.first)) {
-        expr r = mk_sort(mk_meta_univ(m_gen.next()));
+        expr r = mk_sort(mk_meta_univ(mk_fresh_name()));
         justification j = mk_justification(s,
                                            [=](formatter const & fmt, substitution const & subst, bool) {
                                                return pp_type_expected(fmt, substitution(subst).instantiate(s));
@@ -123,13 +124,13 @@ pair<expr, constraint_seq> type_checker::ensure_pi_core(expr e, expr const & s) 
     if (is_pi(ecs.first)) {
         return ecs;
     } else if (auto m = is_stuck(ecs.first)) {
-        expr r             = mk_pi_for(m_gen, *m);
+        expr r             = mk_pi_for(*m);
         justification j    = mk_justification(s, [=](formatter const & fmt, substitution const & subst, bool) {
-                return pp_function_expected(fmt, substitution(subst).instantiate(s));
+                return pp_function_expected(fmt, substitution(subst).instantiate(s), substitution(subst).instantiate(ecs.first));
             });
         return to_ecs(r, mk_eq_cnstr(ecs.first, r, j), ecs.second);
     } else {
-        throw_kernel_exception(m_env, s, [=](formatter const & fmt) { return pp_function_expected(fmt, s); });
+        throw_kernel_exception(m_env, s, [=](formatter const & fmt) { return pp_function_expected(fmt, s, ecs.first); });
     }
 }
 
@@ -189,7 +190,7 @@ expr type_checker::infer_constant(expr const & e, bool infer_only) {
 
 pair<expr, constraint_seq> type_checker::infer_macro(expr const & e, bool infer_only) {
     auto def = macro_def(e);
-    pair<expr, constraint_seq> tcs = def.check_type(e, m_tc_ctx, infer_only);
+    pair<expr, constraint_seq> tcs = def.check_type(e, m_old_tc_ctx, infer_only);
     expr t            = tcs.first;
     constraint_seq cs = tcs.second;
     if (!infer_only && def.trust_level() >= m_env.trust_lvl()) {
@@ -207,7 +208,7 @@ pair<expr, constraint_seq> type_checker::infer_lambda(expr const & _e, bool infe
         es.push_back(e);
         ds.push_back(binding_domain(e));
         expr d = instantiate_rev(binding_domain(e), ls.size(), ls.data());
-        expr l = mk_local(m_gen.next(), binding_name(e), d, binding_info(e));
+        expr l = mk_local(mk_fresh_name(), binding_name(e), d, binding_info(e));
         ls.push_back(l);
         if (!infer_only) {
             pair<expr, constraint_seq> dtcs = infer_type_core(d, infer_only);
@@ -239,7 +240,7 @@ pair<expr, constraint_seq> type_checker::infer_pi(expr const & _e, bool infer_on
         cs = cs + scs.second + dtcs.second;
         expr t1 = scs.first;
         us.push_back(sort_level(t1));
-        expr l  = mk_local(m_gen.next(), binding_name(e), d, binding_info(e));
+        expr l  = mk_local(mk_fresh_name(), binding_name(e), d, binding_info(e));
         ls.push_back(l);
         e = binding_body(e);
     }
@@ -299,6 +300,25 @@ pair<expr, constraint_seq> type_checker::infer_app(expr const & e, bool infer_on
     }
 }
 
+pair<expr, constraint_seq> type_checker::infer_let(expr const & e, bool infer_only) {
+    if (!infer_only) {
+        pair<expr, constraint_seq> dtcs = infer_type_core(let_type(e), infer_only);
+        pair<expr, constraint_seq> scs  = ensure_sort_core(dtcs.first, e);
+        pair<expr, constraint_seq> vcs  = infer_type_core(let_value(e), infer_only);
+        expr v_type = vcs.first;
+        // TODO(Leo): we will remove justifications in the future.
+        as_delayed_justification jst(mk_justification("let mismatch"));
+        pair<bool, constraint_seq> dcs  = is_def_eq(v_type, let_type(e), jst);
+        if (!dcs.first) {
+            throw_kernel_exception(m_env, e,
+                                   [=](formatter const & fmt) {
+                                       return pp_def_type_mismatch(fmt, let_name(e), let_type(e), v_type, true);
+                                   });
+        }
+    }
+    return infer_type_core(instantiate(let_body(e), let_value(e)), infer_only);
+}
+
 expr type_checker::infer_type_core(expr const & e, bool infer_only, constraint_seq & cs) {
     auto r = infer_type_core(e, infer_only);
     cs = cs + r.second;
@@ -337,6 +357,7 @@ pair<expr, constraint_seq> type_checker::infer_type_core(expr const & e, bool in
     case expr_kind::Lambda:    r = infer_lambda(e, infer_only);         break;
     case expr_kind::Pi:        r = infer_pi(e, infer_only);             break;
     case expr_kind::App:       r = infer_app(e, infer_only);            break;
+    case expr_kind::Let:       r = infer_let(e, infer_only);            break;
     }
 
     if (m_memoize)
@@ -420,18 +441,13 @@ bool type_checker::is_opaque(expr const & c) const {
         return true;
 }
 
-type_checker::type_checker(environment const & env, name_generator && g, std::unique_ptr<converter> && conv, bool memoize):
-    m_env(env), m_gen(g), m_conv(std::move(conv)), m_tc_ctx(*this),
+type_checker::type_checker(environment const & env, std::unique_ptr<converter> && conv, bool memoize):
+    m_env(env), m_conv(std::move(conv)), m_old_tc_ctx(*this), m_tc_ctx(*this),
     m_memoize(memoize), m_params(nullptr) {
 }
 
-type_checker::type_checker(environment const & env, name_generator && g, bool memoize):
-    type_checker(env, std::move(g), std::unique_ptr<converter>(new default_converter(env, memoize)), memoize) {}
-
-static name * g_tmp_prefix = nullptr;
-
-type_checker::type_checker(environment const & env):
-    type_checker(env, name_generator(*g_tmp_prefix), std::unique_ptr<converter>(new default_converter(env)), true) {}
+type_checker::type_checker(environment const & env, bool memoize):
+    type_checker(env, std::unique_ptr<converter>(new default_converter(env, memoize)), memoize) {}
 
 type_checker::~type_checker() {}
 
@@ -472,13 +488,13 @@ static void check_duplicated_params(environment const & env, declaration const &
     }
 }
 
-certified_declaration check(environment const & env, declaration const & d, name_generator && g, name_predicate const & pred) {
+certified_declaration check(environment const & env, declaration const & d, name_predicate const & pred) {
     if (d.is_definition())
         check_no_mlocal(env, d.get_name(), d.get_value(), false);
     check_no_mlocal(env, d.get_name(), d.get_type(), true);
     check_name(env, d.get_name());
     check_duplicated_params(env, d);
-    type_checker checker(env, g.mk_child(), std::unique_ptr<converter>(new hint_converter<default_converter>(env, pred)));
+    type_checker checker(env, std::unique_ptr<converter>(new hint_converter<default_converter>(env, pred)));
     expr sort = checker.check(d.get_type(), d.get_univ_params()).first;
     checker.ensure_sort(sort, d.get_type());
     if (d.is_definition()) {
@@ -492,23 +508,13 @@ certified_declaration check(environment const & env, declaration const & d, name
     return certified_declaration(env.get_id(), d);
 }
 
-certified_declaration check(environment const & env, declaration const & d, name_generator && g) {
-    return check(env, d, std::move(g), [](name const &) { return false; });
-}
-
-certified_declaration check(environment const & env, declaration const & d, name_predicate const & pred) {
-    return check(env, d, name_generator(*g_tmp_prefix), pred);
-}
-
 certified_declaration check(environment const & env, declaration const & d) {
-    return check(env, d, name_generator(*g_tmp_prefix));
+    return check(env, d, [](name const &) { return false; });
 }
 
 void initialize_type_checker() {
-    g_tmp_prefix = new name(name::mk_internal_unique_name());
 }
 
 void finalize_type_checker() {
-    delete g_tmp_prefix;
 }
 }

@@ -84,7 +84,7 @@ section
   local attribute weak_funext [reducible]
   local attribute homotopy_ind [reducible]
   definition homotopy_ind_comp : homotopy_ind f (homotopy.refl f) = d :=
-    (@hprop_eq_of_is_contr _ _ _ _ !eq_of_is_contr idp)⁻¹ ▸ idp
+    (@prop_eq_of_is_contr _ _ _ _ !eq_of_is_contr idp)⁻¹ ▸ idp
 end
 
 /- Now the proof is fairly easy; we can just use the same induction principle on both sides. -/
@@ -96,9 +96,9 @@ theorem funext_of_weak_funext (wf : weak_funext.{l k}) : funext.{l k} :=
   λ A B f g,
     let eq_to_f := (λ g' x, f = g') in
     let sim2path := homotopy_ind f eq_to_f idp in
-    assert t1 : sim2path f (homotopy.refl f) = idp,
+    have t1 : sim2path f (homotopy.refl f) = idp,
       proof homotopy_ind_comp f eq_to_f idp qed,
-    assert t2 : apd10 (sim2path f (homotopy.refl f)) = (homotopy.refl f),
+    have t2 : apd10 (sim2path f (homotopy.refl f)) = (homotopy.refl f),
       proof ap apd10 t1 qed,
     have left_inv : apd10 ∘ (sim2path g) ~ id,
       proof (homotopy_ind f (λ g' x, apd10 (sim2path g' x) = x) t2) g qed,
@@ -181,15 +181,14 @@ section
   theorem nondep_funext_from_ua {A : Type} {B : Type}
       : Π {f g : A → B}, f ~ g → f = g :=
     (λ (f g : A → B) (p : f ~ g),
-        let d := λ (x : A), sigma.mk (f x , f x) idp in
-        let e := λ (x : A), sigma.mk (f x , g x) (p x) in
-        let precomp1 :=  compose (pr₁ ∘ pr1) in
-        have equiv1 [visible] : is_equiv precomp1,
+        let d := λ (x : A), @sigma.mk (B × B) (λ (xy : B × B), xy.1 = xy.2) (f x , f x) (eq.refl (f x, f x).1) in
+        let e := λ (x : A), @sigma.mk (B × B) (λ (xy : B × B), xy.1 = xy.2) (f x , g x) (p x) in
+        let precomp1 :=  compose (pr₁ ∘ sigma.pr1) in
+        have equiv1 : is_equiv precomp1,
           from @isequiv_src_compose A B,
-        have equiv2 [visible] : Π x y, is_equiv (ap precomp1),
+        have equiv2 : Π (x y : A → diagonal B), is_equiv (ap precomp1),
           from is_equiv.is_equiv_ap precomp1,
-        have H' : Π (x y : A → diagonal B),
-            pr₁ ∘ pr1 ∘ x = pr₁ ∘ pr1 ∘ y → x = y,
+        have H' : Π (x y : A → diagonal B), pr₁ ∘ pr1 ∘ x = pr₁ ∘ pr1 ∘ y → x = y,
           from (λ x y, is_equiv.inv (ap precomp1)),
         have eq2 : pr₁ ∘ pr1 ∘ d = pr₁ ∘ pr1 ∘ e,
           from idp,
@@ -222,15 +221,22 @@ theorem weak_funext_of_ua : weak_funext :=
     from p⁻¹ ▸ tU,
   tlast)
 
--- In the following we will proof function extensionality using the univalence axiom
+-- we have proven function extensionality from the univalence axiom
 definition funext_of_ua : funext :=
   funext_of_weak_funext (@weak_funext_of_ua)
+
+/-
+  We still take funext as an axiom, so that when you write "print axioms foo", you can see whether
+  it uses only function extensionality, and not also univalence.
+-/
+
+axiom function_extensionality : funext
 
 variables {A : Type} {P : A → Type} {f g : Π x, P x}
 
 namespace funext
-  theorem is_equiv_apd [instance] (f g : Π x, P x) : is_equiv (@apd10 A P f g) :=
-  funext_of_ua f g
+  theorem is_equiv_apdt [instance] (f g : Π x, P x) : is_equiv (@apd10 A P f g) :=
+  function_extensionality f g
 end funext
 
 open funext

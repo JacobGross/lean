@@ -5,6 +5,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Leonardo de Moura
 */
 #include "util/interrupt.h"
+#include "util/fresh_name.h"
 #include "kernel/type_checker.h"
 #include "kernel/find_fn.h"
 #include "kernel/expr_maps.h"
@@ -56,7 +57,7 @@ class unfold_untrusted_macros_fn {
         buffer<expr>  ls;
         while (e.kind() == k) {
             expr d = visit(instantiate_rev(binding_domain(e), ls.size(), ls.data()));
-            expr l = mk_local(m_tc.mk_fresh_name(), binding_name(e), d, binding_info(e));
+            expr l = mk_local(mk_fresh_name(), binding_name(e), d, binding_info(e));
             ls.push_back(l);
             es.push_back(e);
             e = binding_body(e);
@@ -71,6 +72,11 @@ class unfold_untrusted_macros_fn {
             es.pop_back();
         }
         return r;
+    }
+
+    expr visit_let(expr const & e) {
+        // TODO(Leo): improve
+        return visit(instantiate(let_body(e), let_value(e)));
     }
 
     expr visit(expr const & e) {
@@ -99,6 +105,8 @@ class unfold_untrusted_macros_fn {
             return save_result(e, visit_app(e));
         case expr_kind::Lambda: case expr_kind::Pi:
             return save_result(e, visit_binding(e));
+        case expr_kind::Let:
+            return save_result(e, visit_let(e));
         }
         lean_unreachable();
     }

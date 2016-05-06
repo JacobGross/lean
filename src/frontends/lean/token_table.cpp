@@ -90,7 +90,7 @@ static char const * g_decreasing_unicode = "↓";
 void init_token_table(token_table & t) {
     pair<char const *, unsigned> builtin[] =
         {{"fun", 0}, {"Pi", 0}, {"let", 0}, {"in", 0}, {"at", 0}, {"have", 0}, {"assert", 0}, {"suppose", 0}, {"show", 0}, {"suffices", 0}, {"obtain", 0},
-         {"if", 0}, {"then", 0}, {"else", 0}, {"by", 0}, {"by+", 0}, {"hiding", 0}, {"replacing", 0}, {"renaming", 0},
+         {"if", 0}, {"then", 0}, {"else", 0}, {"by", 0}, {"hiding", 0}, {"replacing", 0}, {"renaming", 0},
          {"from", 0}, {"(", g_max_prec}, {")", 0}, {"{", g_max_prec}, {"}", 0}, {"_", g_max_prec},
          {"[", g_max_prec}, {"]", 0}, {"⦃", g_max_prec}, {"⦄", 0}, {".{", 0}, {"Type", g_max_prec},
          {"{|", g_max_prec}, {"|}", 0}, {"(:", g_max_prec}, {":)", 0},
@@ -99,7 +99,7 @@ void init_token_table(token_table & t) {
          {".", 0}, {":", 0}, {"::", 0}, {"calc", 0}, {"rewrite", 0}, {"xrewrite", 0}, {"krewrite", 0},
          {"esimp", 0}, {"fold", 0}, {"unfold", 0}, {"note", 0}, {"with_options", 0}, {"with_attributes", 0}, {"with_attrs", 0},
          {"generalize", 0}, {"as", 0}, {":=", 0}, {"--", 0}, {"#", 0}, {"#tactic", 0},
-         {"(*", 0}, {"/-", 0}, {"begin", g_max_prec}, {"begin+", g_max_prec}, {"abstract", g_max_prec},
+         {"(*", 0}, {"/-", 0}, {"begin", g_max_prec}, {"abstract", g_max_prec},
          {"proof", g_max_prec}, {"qed", 0}, {"@@", g_max_prec}, {"@", g_max_prec},
          {"sorry", g_max_prec}, {"+", g_plus_prec}, {g_cup, g_cup_prec}, {"->", g_arrow_prec},
          {"?(", g_max_prec}, {"⌞", g_max_prec}, {"⌟", 0}, {"match", 0},
@@ -119,8 +119,8 @@ void init_token_table(token_table & t) {
          "add_begin_end_tactic", "set_begin_end_tactic", "instance", "class",
          "multiple_instances", "find_decl", "attribute", "persistent",
          "include", "omit", "migrate", "init_quotient", "init_hits", "#erase_cache", "#projections", "#telescope_eq",
-         "#compile", "#accessible", "#decl_stats", "#relevant_thms", "#simplify", "#app_builder", "#refl", "#symm",
-         "#trans", "#replace", "#congr", "#congr_simp", "#congr_rel", "#normalizer", "#abstract_expr", nullptr};
+         "#compile", "#decl_stats", "#relevant_thms", "#simplify", "#normalizer", "#abstract_expr", "#unify",
+         "#defeq_simplify", nullptr};
 
     pair<char const *, char const *> aliases[] =
         {{g_lambda_unicode, "fun"}, {"forall", "Pi"}, {g_forall_unicode, "Pi"}, {g_pi_unicode, "Pi"},
@@ -179,88 +179,4 @@ void finalize_token_table() {
 }
 
 token_table mk_token_table() { return token_table(); }
-
-DECL_UDATA(token_table)
-static int mk_token_table(lua_State * L) { return push_token_table(L, mk_token_table()); }
-static int mk_default_token_table(lua_State * L) { return push_token_table(L, mk_default_token_table()); }
-static int add_command_token(lua_State * L) {
-    int nargs = lua_gettop(L);
-    if (nargs == 2)
-        return push_token_table(L, add_command_token(to_token_table(L, 1), lua_tostring(L, 2)));
-    else
-        return push_token_table(L, add_command_token(to_token_table(L, 1), lua_tostring(L, 2), lua_tostring(L, 3)));
-}
-static int add_token(lua_State * L) {
-    int nargs = lua_gettop(L);
-    if (nargs == 3)
-        return push_token_table(L, add_token(to_token_table(L, 1), lua_tostring(L, 2), lua_tonumber(L, 3)));
-    else
-        return push_token_table(L, add_token(to_token_table(L, 1), lua_tostring(L, 2), lua_tostring(L, 3), lua_tonumber(L, 4)));
-}
-static int merge(lua_State * L) {
-    return push_token_table(L, merge(to_token_table(L, 1), to_token_table(L, 2)));
-}
-static int find(lua_State * L) {
-    char k;
-    if (lua_isnumber(L, 2)) {
-        k = lua_tonumber(L, 2);
-    } else {
-        char const * str = lua_tostring(L, 2);
-        if (strlen(str) != 1)
-            throw exception("arg #2 must be a string of length 1");
-        k = str[0];
-    }
-    auto it = to_token_table(L, 1).find(k);
-    if (it)
-        return push_token_table(L, *it);
-    else
-        return push_nil(L);
-}
-static int value_of(lua_State * L) {
-    auto it = value_of(to_token_table(L, 1));
-    if (it) {
-        push_boolean(L, it->is_command());
-        push_name(L, it->value());
-        push_integer(L, it->expr_precedence());
-        return 3;
-    } else {
-        push_nil(L);
-        return 1;
-    }
-}
-static int for_each(lua_State * L) {
-    token_table const & t = to_token_table(L, 1);
-    luaL_checktype(L, 2, LUA_TFUNCTION); // user-fun
-    for_each(t, [&](char const * k, token_info const & info) {
-            lua_pushvalue(L, 2);
-            lua_pushstring(L, k);
-            lua_pushboolean(L, info.is_command());
-            push_name(L, info.value());
-            lua_pushinteger(L, info.expr_precedence());
-            pcall(L, 4, 0, 0);
-        });
-    return 0;
-}
-
-static const struct luaL_Reg token_table_m[] = {
-    {"__gc",              token_table_gc},
-    {"add_command_token", safe_function<add_command_token>},
-    {"add_token",         safe_function<add_token>},
-    {"merge",             safe_function<merge>},
-    {"find",              safe_function<find>},
-    {"value_of",          safe_function<value_of>},
-    {"for_each",          safe_function<for_each>},
-    {0, 0}
-};
-
-void open_token_table(lua_State * L) {
-    luaL_newmetatable(L, token_table_mt);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    setfuncs(L, token_table_m, 0);
-
-    SET_GLOBAL_FUN(token_table_pred,       "is_token_table");
-    SET_GLOBAL_FUN(mk_default_token_table, "default_token_table");
-    SET_GLOBAL_FUN(mk_token_table,         "token_table");
-}
 }

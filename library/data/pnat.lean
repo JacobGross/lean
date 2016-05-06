@@ -35,19 +35,19 @@ protected definition le (p q : ℕ+) := p~ ≤ q~
 
 protected definition lt (p q : ℕ+) := p~ < q~
 
-definition pnat_has_add [instance] [reducible] : has_add pnat :=
+definition pnat_has_add [instance] : has_add pnat :=
 has_add.mk pnat.add
 
-definition pnat_has_mul [instance] [reducible] : has_mul pnat :=
+definition pnat_has_mul [instance] : has_mul pnat :=
 has_mul.mk pnat.mul
 
-definition pnat_has_le [instance] [reducible] : has_le pnat :=
+definition pnat_has_le [instance] : has_le pnat :=
 has_le.mk pnat.le
 
-definition pnat_has_lt [instance] [reducible] : has_lt pnat :=
+definition pnat_has_lt [instance] : has_lt pnat :=
 has_lt.mk pnat.lt
 
-definition pnat_has_one [instance] [reducible] : has_one pnat :=
+definition pnat_has_one [instance] : has_one pnat :=
 has_one.mk (pos (1:nat) dec_trivial)
 
 protected lemma mul_def (p q : ℕ+) : p * q = tag (p~ * q~) (mul_pos (pnat_pos p) (pnat_pos q)) :=
@@ -196,7 +196,7 @@ begin
   apply one_div_lt_one_div_of_lt,
   apply rat_of_pnat_is_pos,
   have H : n~ < (2 * n)~, begin
-    rewrite -pnat.one_mul at {1},
+    rewrite -(pnat.one_mul n) at {1},
     rewrite -pnat.lt_def,
     apply mul_lt_mul_left,
     apply one_lt_two
@@ -228,7 +228,7 @@ end
 
 theorem add_halves_double (m n : ℕ+) :
         m⁻¹ + n⁻¹ = ((2 * m)⁻¹ + (2 * n)⁻¹) + ((2 * m)⁻¹ + (2 * n)⁻¹) :=
-have hsimp [visible] : ∀ a b : ℚ, (a + a) + (b + b) = (a + b) + (a + b),
+have hsimp : ∀ a b : ℚ, (a + a) + (b + b) = (a + b) + (a + b),
   by intros; rewrite [rat.add_assoc, -(rat.add_assoc a b b), {_+b}rat.add_comm, -*rat.add_assoc],
 by rewrite [-pnat.add_halves m, -pnat.add_halves n, hsimp]
 
@@ -265,7 +265,7 @@ pnat.eq !add.assoc
 
 protected theorem mul_le_mul_left (p q : ℕ+) : q ≤ p * q :=
 begin
-  rewrite [-pnat.one_mul at {1}, pnat.mul_comm, pnat.mul_comm p],
+  rewrite [-pnat.one_mul q at {1}, pnat.mul_comm, pnat.mul_comm p],
   apply pnat_mul_le_mul_left',
   apply pone_le
 end
@@ -285,7 +285,7 @@ by rewrite rat.mul_comm; apply pnat.inv_cancel_left
 theorem lt_add_left (p q : ℕ+) : p < p + q :=
 begin
   have H : p~ < p~ + q~, begin
-    rewrite -nat.add_zero at {1},
+    rewrite -(nat.add_zero (p~)) at {1},
     apply nat.add_lt_add_left,
     apply pnat_pos
   end,
@@ -308,7 +308,7 @@ begin
 end
 
 theorem pnat_cancel' (n m : ℕ+) : (n * n * m)⁻¹ * (rat_of_pnat n * rat_of_pnat n) = m⁻¹ :=
-assert hsimp : ∀ a b c : ℚ, (a * a * (b * b * c)) = (a * b) * (a * b) * c,
+have hsimp : ∀ a b c : ℚ, (a * a * (b * b * c)) = (a * b) * (a * b) * c,
   begin
     intro a b c,
     rewrite[-*rat.mul_assoc],
@@ -322,7 +322,7 @@ theorem pceil_helper {a : ℚ} {n : ℕ+} (H : pceil a ≤ n) (Ha : a > 0) : n�
 le.trans (inv_ge_of_le H) (one_div_le_one_div_of_le Ha (ubound_ge a))
 
 theorem inv_pceil_div (a b : ℚ) (Ha : a > 0) (Hb : b > 0) : (pceil (a / b))⁻¹ ≤ b / a :=
-assert (pceil (a / b))⁻¹ ≤ 1 / (1 / (b / a)),
+have (pceil (a / b))⁻¹ ≤ 1 / (1 / (b / a)),
   begin
     apply one_div_le_one_div_of_le,
     show 0 < 1 / (b / a), from
@@ -387,7 +387,7 @@ begin
 end
 
 theorem p_add_fractions (n : ℕ+) : (2 * n)⁻¹ + (2 * 3 * n)⁻¹ + (3 * n)⁻¹ = n⁻¹ :=
-assert T : 2⁻¹ + 2⁻¹ * 3⁻¹ + 3⁻¹ = 1, from dec_trivial,
+have T : 2⁻¹ + 2⁻¹ * 3⁻¹ + 3⁻¹ = 1, from dec_trivial,
 by rewrite[*pnat.inv_mul_eq_mul_inv,-*right_distrib,T,rat.one_mul]
 
 theorem rat_power_two_le (k : ℕ+) : rat_of_pnat k ≤ 2^k~ :=

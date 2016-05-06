@@ -32,7 +32,7 @@ attribute trunc.elim [recursor 6] [unfold 6]
 
 namespace trunc
 
-  variables {X Y Z : Type} {P : X → Type} (A B : Type) (n : trunc_index)
+  variables {X Y Z : Type} {P : X → Type} (n : trunc_index) (A B : Type)
 
   local attribute is_trunc_eq [instance]
 
@@ -57,12 +57,19 @@ namespace trunc
   definition trunc_functor [unfold 5] (f : X → Y) : trunc n X → trunc n Y :=
   λxx, trunc.rec_on xx (λx, tr (f x))
 
-  definition trunc_functor_compose (f : X → Y) (g : Y → Z)
+  definition trunc_functor_compose [unfold 7] (f : X → Y) (g : Y → Z)
     : trunc_functor n (g ∘ f) ~ trunc_functor n g ∘ trunc_functor n f :=
   λxx, trunc.rec_on xx (λx, idp)
 
   definition trunc_functor_id : trunc_functor n (@id A) ~ id :=
   λxx, trunc.rec_on xx (λx, idp)
+
+  definition trunc_functor_cast {X Y : Type} (n : ℕ₋₂) (p : X = Y) :
+    trunc_functor n (cast p) ~ cast (ap (trunc n) p) :=
+  begin
+    intro x, induction x with x, esimp,
+    exact fn_tr_eq_tr_fn p (λy, tr) x ⬝ !tr_compose
+  end
 
   definition is_equiv_trunc_functor [constructor] (f : X → Y) [H : is_equiv f]
     : is_equiv (trunc_functor n f) :=
@@ -75,7 +82,6 @@ namespace trunc
   λxx, trunc.rec_on xx (λx, ap tr (p x))
 
   section
-    open equiv.ops
     definition trunc_equiv_trunc [constructor] (f : X ≃ Y) : trunc n X ≃ trunc n Y :=
     equiv.mk _ (is_equiv_trunc_functor n f)
   end
@@ -98,14 +104,17 @@ namespace trunc
 
   /- Propositional truncation -/
 
-  -- should this live in hprop?
-  definition merely [reducible] [constructor] (A : Type) : hprop := trunctype.mk (trunc -1 A) _
+  definition ttrunc [constructor] (n : ℕ₋₂) (X : Type) : n-Type :=
+  trunctype.mk (trunc n X) _
+
+  -- should this live in Prop?
+  definition merely [reducible] [constructor] (A : Type) : Prop := ttrunc -1 A
 
   notation `||`:max A `||`:0 := merely A
   notation `∥`:max A `∥`:0   := merely A
 
-  definition Exists [reducible] [constructor] (P : X → Type) : hprop := ∥ sigma P ∥
-  definition or [reducible] [constructor] (A B : Type) : hprop := ∥ A ⊎ B ∥
+  definition Exists [reducible] [constructor] (P : X → Type) : Prop := ∥ sigma P ∥
+  definition or [reducible] [constructor] (A B : Type) : Prop := ∥ A ⊎ B ∥
 
   notation `exists` binders `,` r:(scoped P, Exists P) := r
   notation `∃` binders `,` r:(scoped P, Exists P) := r
@@ -117,8 +126,8 @@ namespace trunc
   definition or.intro_left  [reducible] [constructor] (x : X) : X ∨ Y             := tr (inl x)
   definition or.intro_right [reducible] [constructor] (y : Y) : X ∨ Y             := tr (inr y)
 
-  definition is_contr_of_merely_hprop [H : is_hprop A] (aa : merely A) : is_contr A :=
-  is_contr_of_inhabited_hprop (trunc.rec_on aa id)
+  definition is_contr_of_merely_prop [H : is_prop A] (aa : merely A) : is_contr A :=
+  is_contr_of_inhabited_prop (trunc.rec_on aa id)
 
   section
   open sigma.ops

@@ -9,13 +9,14 @@ Author: Leonardo de Moura
 #include <utility>
 #include <algorithm>
 #include "util/flet.h"
-#include "util/name_generator.h"
 #include "util/name_set.h"
+#include "util/fresh_name.h"
 #include "kernel/environment.h"
 #include "kernel/constraint.h"
 #include "kernel/justification.h"
 #include "kernel/converter.h"
 #include "kernel/expr_maps.h"
+#include "kernel/abstract_type_context.h"
 
 namespace lean {
 /** \brief Return the "arity" of the given type. The arity is the number of nested pi-expressions. */
@@ -38,7 +39,7 @@ expr replace_range(expr const & type, expr const & new_range);
       <tt>Pi (x_1 : A_1) ... (x_n : A_n[x_1, ..., x_{n-1}]), Type.{u}</tt>
    where \c u is a new universe metavariable.
 */
-expr mk_aux_type_metavar_for(name_generator & ngen, expr const & t);
+expr mk_aux_type_metavar_for(expr const & t);
 
 /**
    \brief Given a type \c t of the form
@@ -49,7 +50,7 @@ expr mk_aux_type_metavar_for(name_generator & ngen, expr const & t);
       <tt>Pi (x_1 : A_1) ... (x_n : A_n[x_1, ..., x_{n-1}]), Type.{u}</tt>
    where \c u is a new universe metavariable.
 */
-expr mk_aux_metavar_for(name_generator & ngen, expr const & t);
+expr mk_aux_metavar_for(expr const & t);
 
 /**
    \brief Given a meta (?m t_1 ... t_n) where ?m has type
@@ -58,7 +59,7 @@ expr mk_aux_metavar_for(name_generator & ngen, expr const & t);
       <tt>Pi (x : ?m1 t_1 ... t_n), (?m2 t_1 ... t_n x) </tt>
    where ?m1 and ?m2 are fresh metavariables
 */
-expr mk_pi_for(name_generator & ngen, expr const & meta);
+expr mk_pi_for(expr const & meta);
 
 /**
    \brief Lean Type Checker. It can also be used to infer types, check whether a
@@ -69,11 +70,12 @@ expr mk_pi_for(name_generator & ngen, expr const & meta);
 class type_checker {
     typedef expr_bi_struct_map<pair<expr, constraint_seq>> cache;
 
-    /** \brief Interface type_checker <-> macro & normalizer_extension */
-    class type_checker_context : public extension_context {
+    /** \brief Interface type_checker <-> macro & normalizer_extension
+        TODO(Leo): delete this class. It will be subsumed by type_checker_context. */
+    class old_type_checker_context : public extension_context {
         type_checker & m_tc;
     public:
-        type_checker_context(type_checker & tc):m_tc(tc) {}
+        old_type_checker_context(type_checker & tc):m_tc(tc) {}
         virtual environment const & env() const { return m_tc.m_env; }
         virtual pair<expr, constraint_seq> whnf(expr const & e) { return m_tc.whnf(e); }
         virtual pair<bool, constraint_seq> is_def_eq(expr const & e1, expr const & e2, delayed_justification & j) {
@@ -82,18 +84,32 @@ class type_checker {
         virtual pair<expr, constraint_seq> check_type(expr const & e, bool infer_only) {
             return m_tc.infer_type_core(e, infer_only);
         }
-        virtual name mk_fresh_name() { return m_tc.m_gen.next(); }
+        virtual optional<expr> is_stuck(expr const & e) { return m_tc.is_stuck(e); }
+    };
+
+    class type_checker_context : public abstract_type_context {
+        type_checker & m_tc;
+    public:
+        type_checker_context(type_checker & tc):m_tc(tc) {}
+        virtual environment const & env() const { return m_tc.m_env; }
+        virtual expr whnf(expr const & e) { return m_tc.whnf(e).first; }
+        virtual bool is_def_eq(expr const & e1, expr const & e2) {
+            no_delayed_justification j;
+            return m_tc.is_def_eq(e1, e2, j).first;
+        }
+        virtual expr infer(expr const & e) { return m_tc.infer_type_core(e, true).first; }
+        virtual expr check(expr const & e) { return m_tc.infer_type_core(e, false).first; }
         virtual optional<expr> is_stuck(expr const & e) { return m_tc.is_stuck(e); }
     };
 
     environment                m_env;
-    name_generator             m_gen;
     std::unique_ptr<converter> m_conv;
     // In the type checker cache, we must take into account binder information.
     // Examples:
     // The type of (lambda x : A, t)   is (Pi x : A, typeof(t))
     // The type of (lambda {x : A}, t) is (Pi {x : A}, typeof(t))
     cache                      m_infer_type_cache[2];
+    old_type_checker_context   m_old_tc_ctx;
     type_checker_context       m_tc_ctx;
     bool                       m_memoize;
     // temp flag
@@ -110,11 +126,12 @@ class type_checker {
     pair<expr, constraint_seq> infer_lambda(expr const & e, bool infer_only);
     pair<expr, constraint_seq> infer_pi(expr const & e, bool infer_only);
     pair<expr, constraint_seq> infer_app(expr const & e, bool infer_only);
+    pair<expr, constraint_seq> infer_let(expr const & e, bool infer_only);
     pair<expr, constraint_seq> infer_type_core(expr const & e, bool infer_only);
     pair<expr, constraint_seq> infer_type(expr const & e);
     expr infer_type_core(expr const & e, bool infer_only, constraint_seq & cs);
 
-    extension_context & get_extension() { return m_tc_ctx; }
+    extension_context & get_extension() { return m_old_tc_ctx; }
     constraint mk_eq_cnstr(expr const & lhs, expr const & rhs, justification const & j);
 public:
     /**
@@ -123,14 +140,14 @@ public:
 
        memoize: if true, then inferred types are memoized/cached
     */
-    type_checker(environment const & env, name_generator && g, std::unique_ptr<converter> && conv, bool memoize = true);
-    type_checker(environment const & env, name_generator && g, bool memoize = true);
-    type_checker(environment const & env);
+    type_checker(environment const & env, std::unique_ptr<converter> && conv, bool memoize = true);
+    type_checker(environment const & env, bool memoize = true);
     ~type_checker();
 
     environment const & env() const { return m_env; }
-    name_generator mk_ngen() { return m_gen.mk_child(); }
-    name mk_fresh_name() { return m_gen.next(); }
+
+    abstract_type_context & get_type_context() { return m_tc_ctx; }
+
     /**
        \brief Return the type of \c t.
 
@@ -241,9 +258,7 @@ void check_no_metavar(environment const & env, name const & n, expr const & e, b
    \brief Type check the given declaration, and return a certified declaration if it is type correct.
    Throw an exception if the declaration is type incorrect.
 */
-certified_declaration check(environment const & env, declaration const & d, name_generator && g);
 certified_declaration check(environment const & env, declaration const & d);
-certified_declaration check(environment const & env, declaration const & d, name_generator && g, name_predicate const & opaque_hints);
 certified_declaration check(environment const & env, declaration const & d, name_predicate const & opaque_hints);
 
 /**

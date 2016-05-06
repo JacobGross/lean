@@ -9,7 +9,7 @@
 
 (defconst lean-keywords1
   '("import" "prelude" "tactic_hint" "protected" "private" "noncomputable" "definition" "renaming"
-    "hiding" "exposing" "parameter" "parameters" "begin" "begin+" "proof" "qed" "conjecture" "constant" "constants"
+    "hiding" "exposing" "parameter" "parameters" "begin" "proof" "qed" "conjecture" "constant" "constants"
     "hypothesis" "lemma" "corollary" "variable" "variables" "premise" "premises" "theory"
     "print" "theorem" "proposition" "example" "abbreviation" "abstract"
     "open" "as" "export" "override" "axiom" "axioms" "inductive" "with" "structure" "record" "universe" "universes"
@@ -26,18 +26,13 @@
   "lean keywords ending with 'word' (not symbol)")
 (defconst lean-keywords1-regexp
   (eval `(rx word-start (or ,@lean-keywords1) word-end)))
-(defconst lean-keywords2
-  '("by+" "begin+")
-  "lean keywords ending with 'symbol'")
-(defconst lean-keywords2-regexp
-  (eval `(rx word-start (or ,@lean-keywords2) symbol-end)))
 (defconst lean-constants
   '("#" "@" "!" "->" "∼" "↔" "/" "==" "=" ":=" "<->" "/\\" "\\/" "∧" "∨"
     "≠" "<" ">" "≤" "≥" "¬" "<=" ">=" "⁻¹" "⬝" "▸" "+" "*" "-" "/" "λ"
     "→" "∃" "∀" "∘" "×" "Σ" "Π" "~" "||" "&&" "≃" "≡" "≅"
     "ℕ" "ℤ" "ℚ" "ℝ" "ℂ" "𝔸"
     ;; HoTT notation
-    "Ω" "∥" "map₊" "₊" "π₁" "S¹" "T²" "⇒" "⟹" "⟶"
+    "Ω" "∥" "map₊" "₊" "π₁" "S¹" "S¹." "T²" "⇒" "⟹" "⟶"
     "⁻¹ᵉ" "⁻¹ᶠ" "⁻¹ᵍ" "⁻¹ʰ" "⁻¹ⁱ" "⁻¹ᵐ" "⁻¹ᵒ" "⁻¹ᵖ" "⁻¹ʳ" "⁻¹ᵛ" "⁻¹ˢ" "⁻²" "⁻²ᵒ"
     "⬝e" "⬝i" "⬝o" "⬝op" "⬝po" "⬝h" "⬝v" "⬝hp" "⬝vp" "⬝ph" "⬝pv" "⬝r" "◾" "◾o"
     "∘n" "∘f" "∘fi" "∘nf" "∘fn" "∘n1f" "∘1nf" "∘f1n" "∘fn1"
@@ -53,11 +48,11 @@
   (--map (s-concat "[" it "]")
          '("persistent" "notation" "visible" "instance" "trans_instance"
            "class" "parsing_only" "coercion" "unfold_full" "constructor"
-           "reducible" "irreducible" "semireducible" "quasireducible" "wf"
+           "reducible" "irreducible" "semireducible" "wf"
            "whnf" "multiple_instances" "none" "decl" "declaration"
            "relation" "symm" "subst" "refl" "trans" "simp" "congr"
            "backward" "forward" "no_pattern" "begin_end" "tactic" "abbreviation"
-           "reducible" "unfold" "alias" "eqv" "intro" "intro!" "elim" "grinder"
+           "reducible" "unfold" "alias" "eqv" "intro" "intro!" "elim" "grinder" "unify" "defeq"
            "localrefinfo" "recursor"))
   "lean modifiers")
 (defconst lean-modifiers-regexp
@@ -69,10 +64,11 @@
     "apply" "fapply" "eapply" "rename" "intro" "intros" "all_goals" "fold" "focus" "focus_at"
     "generalize" "generalizes" "clear" "clears" "revert" "reverts" "back" "beta" "done" "exact" "rexact"
     "refine" "repeat" "whnf" "rotate" "rotate_left" "rotate_right" "inversion" "cases" "rewrite"
-    "xrewrite" "krewrite" "blast" "simp" "esimp" "unfold" "change" "check_expr" "contradiction"
+    "xrewrite" "krewrite" "blast" "rec_simp" "rec_inst_simp"
+    "inst_simp" "simp" "simp_nohyps" "simp_topdown" "esimp" "unfold" "change" "check_expr" "contradiction"
     "exfalso" "split" "existsi" "constructor" "fconstructor" "left" "right" "injection" "congruence" "reflexivity"
     "symmetry" "transitivity" "state" "induction" "induction_using" "fail" "append"
-    "substvars" "now" "with_options" "with_attributes" "with_attrs" "note")
+    "substvars" "now" "with_options" "with_attributes" "with_attrs" "note" "replace")
   "lean tactics")
 (defconst lean-tactics-regexp
   (eval `(rx word-start (or ,@lean-tactics) word-end)))
@@ -169,12 +165,12 @@
      (,(rx (or "∘if")) . 'font-lock-constant-face)
      ;; Keywords
      ("\\(set_option\\)[ \t]*\\([^ \t\n]*\\)" (2 'font-lock-constant-face))
-     (,lean-keywords2-regexp . 'font-lock-keyword-face)
      (,lean-keywords1-regexp . 'font-lock-keyword-face)
+     (,(rx word-start (group "example") ".") (1 'font-lock-keyword-face))
      (,(rx (or "∎")) . 'font-lock-keyword-face)
      ;; Types
-     (,(rx word-start (or "Prop" "Type" "Type'" "Type₊" "Type₀" "Type₁" "Type₂" "Type₃" "Type*") symbol-end) . 'font-lock-type-face)
-     (,(rx word-start (group "Type") ".") (1 'font-lock-type-face))
+     (,(rx word-start (or "Prop" "Type" "Type'" "Type₊" "Type₀" "Type₁" "Type₂" "Type₃" "Type*" "pType" "Set" "pSet" "Set*") symbol-end) . 'font-lock-type-face)
+     (,(rx word-start (group (or "Prop" "Type" "Set" "pType" "pSet")) ".") (1 'font-lock-type-face))
      ;; String
      ("\"[^\"]*\"" . 'font-lock-string-face)
      ;; ;; Constants

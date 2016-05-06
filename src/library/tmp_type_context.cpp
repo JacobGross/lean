@@ -11,19 +11,12 @@ namespace lean {
 void tmp_type_context::init(environment const & env, reducible_behavior b) {
     switch (b) {
     case UnfoldReducible:      m_opaque_pred = mk_not_reducible_pred(env);      break;
-    case UnfoldQuasireducible: m_opaque_pred = mk_not_quasireducible_pred(env); break;
     case UnfoldSemireducible:  m_opaque_pred = mk_irreducible_pred(env);        break;
     }
 }
 
 tmp_type_context::tmp_type_context(environment const & env, options const & o, reducible_behavior b):
     type_context(env, o) {
-    init(env, b);
-}
-
-tmp_type_context::tmp_type_context(environment const & env, options const & o, tmp_local_generator & gen,
-                                   reducible_behavior b):
-    type_context(env, o, gen) {
     init(env, b);
 }
 
@@ -35,6 +28,7 @@ void tmp_type_context::clear() {
     m_eassignment.clear();
     m_trail.clear();
     m_scopes.clear();
+    clear_infer_cache();
 }
 
 void tmp_type_context::set_next_uvar_idx(unsigned next_idx) {
@@ -63,7 +57,7 @@ optional<level> tmp_type_context::get_assignment(level const & u) const {
     // 1- We should create the meta-variable using mk_uvar
     // 2- We create using mk_idx_metauniv, and notify this object using
     //    set_next_uvar_idx
-    lean_assert(idx < m_uassignment.size());
+    if (idx >= m_uassignment.size()) return none_level();
     return m_uassignment[idx];
 }
 
@@ -73,14 +67,13 @@ optional<expr> tmp_type_context::get_assignment(expr const & m) const {
     // 1- We should create the meta-variable using mk_mvar
     // 2- We create using mk_idx_metavar, and notify this object using
     //    set_next_mvar_idx
-    lean_assert(idx < m_eassignment.size());
+    if (idx >= m_eassignment.size()) return none_expr();
     return m_eassignment[idx];
 }
 
 void tmp_type_context::update_assignment(level const & u, level const & v) {
     unsigned idx = to_meta_idx(u);
     lean_assert(idx < m_uassignment.size()); // see comments above
-    lean_assert(!m_uassignment[idx]);
     m_uassignment[idx] = v;
     if (!m_scopes.empty())
         m_trail.emplace_back(trail_kind::Level, idx);
@@ -111,7 +104,7 @@ expr tmp_type_context::mk_mvar(expr const & type) {
     return mk_idx_metavar(idx, type);
 }
 
-void tmp_type_context::push() {
+void tmp_type_context::push_core() {
     m_scopes.push_back(scope());
     scope & s = m_scopes.back();
     s.m_uassignment_sz     = m_uassignment.size();
@@ -119,7 +112,7 @@ void tmp_type_context::push() {
     s.m_trail_sz           = m_trail.size();
 }
 
-void tmp_type_context::pop() {
+void tmp_type_context::pop_core() {
     lean_assert(!m_scopes.empty());
     scope const & s  = m_scopes.back();
     unsigned old_sz  = s.m_trail_sz;
@@ -137,6 +130,10 @@ void tmp_type_context::pop() {
     m_uassignment.resize(s.m_uassignment_sz);
     m_eassignment.resize(s.m_eassignment_sz);
     m_scopes.pop_back();
+}
+
+unsigned tmp_type_context::get_num_check_points() const {
+    return m_scopes.size();
 }
 
 void tmp_type_context::commit() {

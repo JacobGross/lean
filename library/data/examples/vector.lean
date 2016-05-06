@@ -257,17 +257,17 @@ namespace vector
   | 0     (m+1) []      (y::ys) h₁ h₂ := by contradiction
   | (n+1) 0     (x::xs) []      h₁ h₂ := by contradiction
   | (n+1) (m+1) (x::xs) (y::ys) h₁ h₂ :=
-    assert e₁ : n = m, from succ.inj h₂,
-    assert e₂ : x = y, begin unfold to_list at h₁, injection h₁, assumption end,
-    have   to_list xs = to_list ys, begin unfold to_list at h₁, injection h₁, assumption end,
-    assert xs == ys, from heq_of_list_eq this e₁,
-    assert y :: xs == y :: ys, begin clear heq_of_list_eq h₁ h₂, revert xs ys this, induction e₁, intro xs ys h, rewrite [heq.to_eq h] end,
+    have e₁ : n = m, from succ.inj h₂,
+    have e₂ : x = y, begin unfold to_list at h₁, injection h₁, assumption end,
+    have   e₃ : to_list xs = to_list ys, begin unfold to_list at h₁, injection h₁, assumption end,
+    have xs == ys, from heq_of_list_eq e₃ e₁,
+    have y :: xs == y :: ys, begin clear heq_of_list_eq h₁ h₂ e₃, revert xs ys this, induction e₁, intro xs ys h, rewrite [eq_of_heq h] end,
     show x :: xs == y :: ys, by rewrite e₂; exact this
 
   theorem list_eq_of_heq {n m} {v₁ : vector A n} {v₂ : vector A m} : v₁ == v₂ → n = m → to_list v₁ = to_list v₂ :=
   begin
     intro h₁ h₂, revert v₁ v₂ h₁,
-    subst n, intro v₁ v₂ h₁, rewrite [heq.to_eq h₁]
+    subst n, intro v₁ v₂ h₁, rewrite [eq_of_heq h₁]
   end
 
   theorem of_list_to_list {n : nat} (v : vector A n) : of_list (to_list v) == v :=

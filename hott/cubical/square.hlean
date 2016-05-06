@@ -48,7 +48,7 @@ namespace eq
 
   definition hdeg_square_idp (p : a = a') : hdeg_square (refl p) = hrfl :=
   by cases p; reflexivity
-  
+
   definition vdeg_square_idp (p : a = a') : vdeg_square (refl p) = vrfl :=
   by cases p; reflexivity
 
@@ -232,6 +232,9 @@ namespace eq
     : p₁₂ = p₀₁⁻¹ ⬝ p₁₀ ⬝ p₂₁ :=
   by induction s₁₁; apply idp
 
+  definition square_of_eq_bot (r : p₀₁⁻¹ ⬝ p₁₀ ⬝ p₂₁ = p₁₂) : square p₁₀ p₁₂ p₀₁ p₂₁ :=
+  by induction p₂₁; induction p₁₀; esimp at r; induction r; induction p₀₁; exact ids
+
   definition square_equiv_eq [constructor] (t : a₀₀ = a₀₂) (b : a₂₀ = a₂₂)
     (l : a₀₀ = a₂₀) (r : a₀₂ = a₂₂) : square t b l r ≃ t ⬝ r = l ⬝ b :=
   begin
@@ -299,10 +302,38 @@ namespace eq
     (s : square q r (ap f p) (ap g p)) : q =[p] r :=
   by induction p;apply pathover_idp_of_eq;exact eq_of_vdeg_square s
 
+  definition eq_pathover_constant_left {g : A → B} {p : a = a'} {b : B} {q : b = g a} {r : b = g a'}
+    (s : square q r idp (ap g p)) : q =[p] r :=
+  eq_pathover (ap_constant p b ⬝ph s)
+
+  definition eq_pathover_id_left {g : A → A} {p : a = a'} {q : a = g a} {r : a' = g a'}
+    (s : square q r p (ap g p)) : q =[p] r :=
+  eq_pathover (ap_id p ⬝ph s)
+
+  definition eq_pathover_constant_right {f : A → B} {p : a = a'} {b : B} {q : f a = b} {r : f a' = b}
+    (s : square q r (ap f p) idp) : q =[p] r :=
+  eq_pathover (s ⬝hp (ap_constant p b)⁻¹)
+
+  definition eq_pathover_id_right {f : A → A} {p : a = a'} {q : f a = a} {r : f a' = a'}
+    (s : square q r (ap f p) p) : q =[p] r :=
+  eq_pathover (s ⬝hp (ap_id p)⁻¹)
+
   definition square_of_pathover [unfold 7]
     {f g : A → B} {p : a = a'} {q : f a = g a} {r : f a' = g a'}
     (s : q =[p] r) : square q r (ap f p) (ap g p) :=
   by induction p;apply vdeg_square;exact eq_of_pathover_idp s
+
+  definition eq_pathover_constant_left_id_right {p : a = a'} {a₀ : A} {q : a₀ = a} {r : a₀ = a'}
+    (s : square q r idp p) : q =[p] r :=
+  eq_pathover (ap_constant p a₀ ⬝ph s ⬝hp (ap_id p)⁻¹)
+
+  definition eq_pathover_id_left_constant_right {p : a = a'} {a₀ : A} {q : a = a₀} {r : a' = a₀}
+    (s : square q r p idp) : q =[p] r :=
+  eq_pathover (ap_id p ⬝ph s ⬝hp (ap_constant p a₀)⁻¹)
+
+  definition loop_pathover {p : a = a'} {b : B} {q : a = a} {r : a' = a'}
+    (s : square q r p p) : q =[p] r :=
+  eq_pathover (ap_id p ⬝ph s ⬝hp (ap_id p)⁻¹)
 
   /- interaction of equivalences with operations on squares -/
 
@@ -431,11 +462,11 @@ namespace eq
     {a₀₂ a₂₂ : A} {b : a₀₂ = a₂₂} {l : a₁₀ = a₀₂} {r : a₁₀ = a₂₂}
       (s : square idp b l r) (H : P ids) : P s :=
   let p : l ⬝ b = r := (eq_of_square s)⁻¹ ⬝ !idp_con in
-  assert H2 : P (square_of_eq ((p ⬝ !idp_con⁻¹)⁻¹)),
+  have H2 : P (square_of_eq ((p ⬝ !idp_con⁻¹)⁻¹)),
     from eq.rec_on p (by induction b; induction l; exact H),
-  assert H3 : P (square_of_eq ((eq_of_square s)⁻¹⁻¹)),
+  have H3 : P (square_of_eq ((eq_of_square s)⁻¹⁻¹)),
     from eq.rec_on !con_inv_cancel_right H2,
-  assert H4 : P (square_of_eq (eq_of_square s)),
+  have H4 : P (square_of_eq (eq_of_square s)),
     from eq.rec_on !inv_inv H3,
   proof
     left_inv (to_fun !square_equiv_eq) s ▸ H4
@@ -454,7 +485,7 @@ namespace eq
     {a' : A} {t : a = a'} {b : a = a'}
       (s : square t b idp idp) (H : P ids) : P s :=
   let p : idp ⬝ b = t := (eq_of_square s)⁻¹ in
-  assert H2 : P (square_of_eq (eq_of_square s)⁻¹⁻¹),
+  have H2 : P (square_of_eq (eq_of_square s)⁻¹⁻¹),
     from @eq.rec_on _ _ (λx q, P (square_of_eq q⁻¹)) _ p (by induction b; exact H),
   to_left_inv (!square_equiv_eq) s ▸ !inv_inv ▸ H2
 
@@ -480,8 +511,12 @@ namespace eq
   by induction s₂;induction s₁;constructor
 
   open is_trunc
-  definition is_hset.elims [H : is_hset A] : square p₁₀ p₁₂ p₀₁ p₂₁ :=
-  square_of_eq !is_hset.elim
+  definition is_set.elims [H : is_set A] : square p₁₀ p₁₂ p₀₁ p₂₁ :=
+  square_of_eq !is_set.elim
+
+  definition is_trunc_square [instance] (n : trunc_index) [H : is_trunc n .+2 A]
+    : is_trunc n (square p₁₀ p₁₂ p₀₁ p₂₁) :=
+  is_trunc_equiv_closed_rev n !square_equiv_eq
 
   -- definition square_of_con_inv_hsquare {p₁ p₂ p₃ p₄ : a₁ = a₂}
   --   {t : p₁ = p₂} {b : p₃ = p₄} {l : p₁ = p₃} {r : p₂ = p₄}
@@ -522,11 +557,11 @@ namespace eq
   /- Matching eq_hconcat with hconcat etc. -/
   -- TODO maybe rename hconcat_eq and the like?
   variable (s₁₁)
-  definition ph_eq_pv_h_vp {p : a₀₀ = a₀₂} (r : p = p₀₁) : 
+  definition ph_eq_pv_h_vp {p : a₀₀ = a₀₂} (r : p = p₀₁) :
     r ⬝ph s₁₁ =  !idp_con⁻¹ ⬝pv ((hdeg_square r) ⬝h s₁₁) ⬝vp !idp_con :=
   by cases r; cases s₁₁; esimp
 
-  definition hdeg_h_eq_pv_ph_vp {p : a₀₀ = a₀₂} (r : p = p₀₁) : 
+  definition hdeg_h_eq_pv_ph_vp {p : a₀₀ = a₀₂} (r : p = p₀₁) :
     hdeg_square r ⬝h s₁₁ = !idp_con ⬝pv (r ⬝ph s₁₁) ⬝vp !idp_con⁻¹ :=
   by cases r; cases s₁₁; esimp
 

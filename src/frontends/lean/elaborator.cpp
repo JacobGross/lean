@@ -7,6 +7,8 @@ Author: Leonardo de Moura
 #include <functional>
 #include <utility>
 #include <vector>
+#include <string>
+#include <unordered_set>
 #include "util/flet.h"
 #include "util/list_fn.h"
 #include "util/lazy_list_fn.h"
@@ -33,15 +35,16 @@ Author: Leonardo de Moura
 #include "library/deep_copy.h"
 #include "library/typed_expr.h"
 #include "library/metavar_closure.h"
-#include "library/local_context.h"
+#include "library/old_local_context.h"
 #include "library/constants.h"
 #include "library/util.h"
 #include "library/choice_iterator.h"
 #include "library/projection.h"
+#include "library/trace.h"
 #include "library/pp_options.h"
 #include "library/class_instance_resolution.h"
 #include "library/tactic/expr_to_tactic.h"
-#include "library/error_handling/error_handling.h"
+#include "library/error_handling.h"
 #include "library/definitional/equations.h"
 #include "frontends/lean/local_decls.h"
 #include "frontends/lean/structure_cmd.h"
@@ -51,7 +54,7 @@ Author: Leonardo de Moura
 #include "frontends/lean/elaborator.h"
 #include "frontends/lean/calc_proof_elaborator.h"
 #include "frontends/lean/info_tactic.h"
-#include "frontends/lean/begin_end_ext.h"
+#include "frontends/lean/begin_end_annotation.h"
 #include "frontends/lean/elaborator_exception.h"
 #include "frontends/lean/nested_declaration.h"
 #include "frontends/lean/calc.h"
@@ -60,16 +63,61 @@ Author: Leonardo de Moura
 #include "frontends/lean/prenum.h"
 
 namespace lean {
-type_checker_ptr mk_coercion_from_type_checker(environment const & env, name_generator && ngen) {
+typedef pair<std::string, pos_info> fname_pos_info;
+
+struct fname_pos_info_hash_fn {
+    bool operator()(fname_pos_info const & p) const {
+        return hash(hash_str(p.first.size(), p.first.c_str(), 17u), hash(p.second.first, p.second.second));
+    }
+};
+
+typedef std::unordered_set<fname_pos_info, fname_pos_info_hash_fn> fname_pos_info_set;
+
+/** \brief Auxiliary class used to avoid "don't know how to synthesize placeholder" message when
+    tactic failures have already been reported. We only use this class when flycheck is enabled.
+    The idea is to minimize the amount of redundant information in the flycheck pannel. */
+class elaborator_reported_errors {
+    /* This object may be accessed by different threads. Recall that the elaborator may indirectly
+       create threads when invoking tactics. */
+    mutex              m_mutex;
+    fname_pos_info_set m_reported_positions;
+public:
+    /* \brief Return true if this is the first time we store information for the position associated with \c e.
+       Otherwise, return false.
+       \remark We also return true if \c pip is nullptr, or if there is no position information associated with \c e. */
+    bool save(pos_info_provider const * pip, expr const & e) {
+        if (!pip) return true;
+        if (auto p = pip->get_pos_info(e)) {
+            lock_guard<mutex> lc(m_mutex);
+            fname_pos_info entry(pip->get_file_name(), *p);
+            if (m_reported_positions.find(entry) == m_reported_positions.end()) {
+                m_reported_positions.insert(entry);
+                return true;
+            } else {
+                return false; // have already been saved
+            }
+        } else {
+            return true;
+        }
+    }
+};
+
+static elaborator_reported_errors * g_elaborator_reported_errors = nullptr;
+
+static bool save_error(pos_info_provider const * pip, expr const & e) {
+    return g_elaborator_reported_errors->save(pip, e);
+}
+
+type_checker_ptr mk_coercion_from_type_checker(environment const & env) {
     auto irred_pred = mk_irreducible_pred(env);
-    return mk_type_checker(env, std::move(ngen), [=](name const & n) {
+    return mk_type_checker(env, [=](name const & n) {
             return has_coercions_from(env, n) || irred_pred(n);
         });
 }
 
-type_checker_ptr mk_coercion_to_type_checker(environment const & env, name_generator && ngen) {
+type_checker_ptr mk_coercion_to_type_checker(environment const & env) {
     auto irred_pred = mk_irreducible_pred(env);
-    return mk_type_checker(env, std::move(ngen), [=](name const & n) {
+    return mk_type_checker(env, [=](name const & n) {
             return has_coercions_to(env, n) || irred_pred(n);
         });
 }
@@ -82,17 +130,16 @@ type_checker_ptr mk_coercion_to_type_checker(environment const & env, name_gener
 */
 struct elaborator::choice_expr_elaborator : public choice_iterator {
     elaborator &  m_elab;
-    local_context m_context;
-    local_context m_full_context;
+    old_local_context m_context;
     bool          m_in_equation_lhs;
     expr          m_meta;
     expr          m_type;
     expr          m_choice;
     unsigned      m_idx;
 
-    choice_expr_elaborator(elaborator & elab, local_context const & ctx, local_context const & full_ctx, bool in_equation_lhs,
+    choice_expr_elaborator(elaborator & elab, old_local_context const & ctx, bool in_equation_lhs,
                            expr const & meta, expr const & type, expr const & c):
-        m_elab(elab), m_context(ctx), m_full_context(full_ctx), m_in_equation_lhs(in_equation_lhs), m_meta(meta),
+        m_elab(elab), m_context(ctx), m_in_equation_lhs(in_equation_lhs), m_meta(meta),
         m_type(type), m_choice(c), m_idx(get_num_choices(m_choice)) {
     }
 
@@ -103,9 +150,8 @@ struct elaborator::choice_expr_elaborator : public choice_iterator {
             expr const & f = get_app_fn(c);
             m_elab.save_identifier_info(f);
             try {
-                flet<local_context> set1(m_elab.m_context,         m_context);
-                flet<local_context> set2(m_elab.m_full_context,    m_full_context);
-                flet<bool>          set3(m_elab.m_in_equation_lhs, m_in_equation_lhs);
+                flet<old_local_context> set1(m_elab.m_context,         m_context);
+                flet<bool>              set2(m_elab.m_in_equation_lhs, m_in_equation_lhs);
                 pair<expr, constraint_seq> rcs = m_elab.visit(c);
                 expr r                         = rcs.first;
                 constraint_seq cs              = rcs.second;
@@ -128,24 +174,22 @@ struct elaborator::choice_expr_elaborator : public choice_iterator {
     }
 };
 
-elaborator::elaborator(elaborator_context & ctx, name_generator && ngen, bool nice_mvar_names):
+elaborator::elaborator(elaborator_context & ctx, bool nice_mvar_names):
     m_ctx(ctx),
-    m_ngen(ngen),
     m_context(),
-    m_full_context(),
     m_unifier_config(ctx.m_ios.get_options(), true /* use exceptions */, true /* discard */) {
     m_has_sorry = has_sorry(m_ctx.m_env);
     m_use_tactic_hints  = true;
     m_no_info           = false;
     m_in_equation_lhs   = false;
-    m_tc                = mk_type_checker(ctx.m_env, m_ngen.mk_child());
-    m_coercion_from_tc  = mk_coercion_from_type_checker(ctx.m_env, m_ngen.mk_child());
-    m_coercion_to_tc    = mk_coercion_to_type_checker(ctx.m_env, m_ngen.mk_child());
+    m_tc                = mk_type_checker(ctx.m_env);
+    m_coercion_from_tc  = mk_coercion_from_type_checker(ctx.m_env);
+    m_coercion_to_tc    = mk_coercion_to_type_checker(ctx.m_env);
     m_nice_mvar_names   = nice_mvar_names;
 }
 
 expr elaborator::mk_local(name const & n, expr const & t, binder_info const & bi) {
-    return ::lean::mk_local(m_ngen.next(), n, t, bi);
+    return ::lean::mk_local(mk_fresh_name(), n, t, bi);
 }
 
 void elaborator::register_meta(expr const & meta) {
@@ -264,10 +308,10 @@ void elaborator::instantiate_info(substitution s) {
         expr meta      = s.instantiate(*m_to_show_hole);
         expr meta_type = s.instantiate(type_checker(env()).infer(meta).first);
         goal g(meta, meta_type);
-        proof_state ps(goals(g), s, m_ngen, constraints());
-        auto out = regular(env(), ios());
+        proof_state ps(goals(g), s, constraints());
+        auto out = regular(env(), ios(), m_tc->get_type_context());
         print_lean_info_header(out.get_stream());
-        out << ps.pp(env(), ios()) << endl;
+        out << ps.pp(out.get_formatter()) << endl;
         print_lean_info_footer(out.get_stream());
     }
     if (infom()) {
@@ -292,13 +336,13 @@ expr elaborator::mk_placeholder_meta(optional<name> const & suffix, optional<exp
                                      tag g, bool is_strict, bool is_inst_implicit, constraint_seq & cs) {
     if (is_inst_implicit && !m_ctx.m_ignore_instances) {
         auto ec = mk_class_instance_elaborator(
-            env(), ios(), m_context, m_ngen.next(), suffix,
+            env(), ios(), m_context, suffix,
             use_local_instances(), is_strict, type, g, m_ctx.m_pos_provider);
         register_meta(ec.first);
         cs += ec.second;
         return ec.first;
     } else {
-        expr m = m_context.mk_meta(m_ngen, suffix, type, g);
+        expr m = m_context.mk_meta(suffix, type, g);
         register_meta(m);
         return m;
     }
@@ -306,7 +350,7 @@ expr elaborator::mk_placeholder_meta(optional<name> const & suffix, optional<exp
 
 expr elaborator::visit_expecting_type(expr const & e, constraint_seq & cs) {
     if (is_placeholder(e) && !placeholder_type(e)) {
-        expr r = m_context.mk_type_meta(m_ngen, e.get_tag());
+        expr r = m_context.mk_type_meta(e.get_tag());
         save_placeholder_info(e, r);
         return r;
     } else if (is_no_info(e)) {
@@ -330,8 +374,6 @@ expr elaborator::visit_expecting_type_of(expr const & e, expr const & t, constra
         return visit_choice(e, some_expr(t), cs);
     } else if (is_by(e)) {
         return visit_by(e, some_expr(t), cs);
-    } else if (is_by_plus(e)) {
-        return visit_by_plus(e, some_expr(t), cs);
     } else if (is_calc_annotation(e)) {
         return visit_calc_proof(e, some_expr(t), cs);
     } else {
@@ -342,14 +384,12 @@ expr elaborator::visit_expecting_type_of(expr const & e, expr const & t, constra
 expr elaborator::visit_choice(expr const & e, optional<expr> const & t, constraint_seq & cs) {
     lean_assert(is_choice(e));
     // Possible optimization: try to lookahead and discard some of the alternatives.
-    expr m                 = m_full_context.mk_meta(m_ngen, t, e.get_tag());
+    expr m = m_context.mk_meta(t, e.get_tag());
     register_meta(m);
-    local_context ctx      = m_context;
-    local_context full_ctx = m_full_context;
+    old_local_context ctx      = m_context;
     bool in_equation_lhs   = m_in_equation_lhs;
-    auto fn = [=](expr const & meta, expr const & type, substitution const & /* s */,
-                  name_generator && /* ngen */) {
-        return choose(std::make_shared<choice_expr_elaborator>(*this, ctx, full_ctx, in_equation_lhs, meta, type, e));
+    auto fn = [=](expr const & meta, expr const & type, substitution const & /* s */) {
+        return choose(std::make_shared<choice_expr_elaborator>(*this, ctx, in_equation_lhs, meta, type, e));
     };
     auto pp_fn = [=](formatter const & fmt, pos_info_provider const * pos_prov, substitution const &, bool is_main, bool) {
         format r = pp_previous_error_header(fmt, pos_prov, some_expr(e), is_main);
@@ -379,16 +419,7 @@ expr elaborator::visit_choice(expr const & e, optional<expr> const & t, constrai
 expr elaborator::visit_by(expr const & e, optional<expr> const & t, constraint_seq & cs) {
     lean_assert(is_by(e));
     expr tac = visit(get_by_arg(e), cs);
-    expr m   = m_context.mk_meta(m_ngen, t, e.get_tag());
-    register_meta(m);
-    m_local_tactic_hints.insert(mlocal_name(get_app_fn(m)), tac);
-    return m;
-}
-
-expr elaborator::visit_by_plus(expr const & e, optional<expr> const & t, constraint_seq & cs) {
-    lean_assert(is_by_plus(e));
-    expr tac = visit(get_by_plus_arg(e), cs);
-    expr m   = m_full_context.mk_meta(m_ngen, t, e.get_tag());
+    expr m   = m_context.mk_meta(t, e.get_tag());
     register_meta(m);
     m_local_tactic_hints.insert(mlocal_name(get_app_fn(m)), tac);
     return m;
@@ -400,7 +431,7 @@ expr elaborator::visit_calc_proof(expr const & e, optional<expr> const & t, cons
     if (infom())
         im = &m_pre_info_data;
     pair<expr, constraint_seq> ecs = visit(get_annotation_arg(e));
-    expr m                         = m_full_context.mk_meta(m_ngen, t, e.get_tag());
+    expr m                         = m_context.mk_meta(t, e.get_tag());
     register_meta(m);
     auto fn = [=](expr const & t) { save_type_data(get_annotation_arg(e), t); };
     constraint c                   = mk_calc_proof_cnstr(env(), ios().get_options(),
@@ -474,7 +505,7 @@ pair<expr, expr> elaborator::ensure_fun(expr f, constraint_seq & cs) {
                 coes  = get_coercions_to_fun(env(), f_type);
             }
             if (is_nil(coes)) {
-                throw_kernel_exception(env(), f, [=](formatter const & fmt) { return pp_function_expected(fmt, f); });
+                throw_kernel_exception(env(), f, [=](formatter const & fmt) { return pp_function_expected(fmt, f, f_type); });
             } else if (is_nil(tail(coes))) {
                 expr old_f = f;
                 f = mk_coercion_app(head(coes), f);
@@ -483,14 +514,12 @@ pair<expr, expr> elaborator::ensure_fun(expr f, constraint_seq & cs) {
                 save_coercion_info(old_f, f);
                 lean_assert(is_pi(f_type));
             } else {
-                local_context ctx      = m_context;
-                local_context full_ctx = m_full_context;
-                justification j        = mk_justification(f, [=](formatter const & fmt, substitution const & subst, bool) {
-                        return pp_function_expected(fmt, substitution(subst).instantiate(f));
+                old_local_context ctx = m_context;
+                justification j = mk_justification(f, [=](formatter const & fmt, substitution const & subst, bool) {
+                        return pp_function_expected(fmt, substitution(subst).instantiate(f), substitution(subst).instantiate(f_type));
                     });
-                auto choice_fn = [=](expr const & meta, expr const &, substitution const &, name_generator &&) {
-                    flet<local_context> save1(m_context,      ctx);
-                    flet<local_context> save2(m_full_context, full_ctx);
+                auto choice_fn = [=](expr const & meta, expr const &, substitution const &) {
+                    flet<old_local_context> save1(m_context,      ctx);
                     list<constraints> choices = map2<constraints>(coes, [&](expr const & coe) {
                             expr new_f      = mk_coercion_app(coe, f);
                             constraint_seq cs;
@@ -500,7 +529,7 @@ pair<expr, expr> elaborator::ensure_fun(expr f, constraint_seq & cs) {
                         });
                     return choose(std::make_shared<coercion_elaborator>(*this, f, choices, coes, false));
                 };
-                f   = m_full_context.mk_meta(m_ngen, none_expr(), f.get_tag());
+                f   = m_context.mk_meta(none_expr(), f.get_tag());
                 register_meta(f);
                 cs += mk_choice_cnstr(f, choice_fn, to_delay_factor(cnstr_group::Basic), true, j);
                 lean_assert(is_meta(f));
@@ -605,7 +634,7 @@ pair<expr, constraint_seq> elaborator::apply_coercion(expr const & a, expr a_typ
 pair<expr, constraint_seq> elaborator::mk_delayed_coercion(
     expr const & a, expr const & a_type, expr const & expected_type,
     justification const & j) {
-    expr m       = m_full_context.mk_meta(m_ngen, some_expr(expected_type), a.get_tag());
+    expr m       = m_context.mk_meta(some_expr(expected_type), a.get_tag());
     register_meta(m);
     constraint c = mk_coercion_cnstr(*m_coercion_from_tc, *m_coercion_to_tc, *this, m, a, a_type, j,
                                      to_delay_factor(cnstr_group::Basic), m_ctx.m_lift_coercions);
@@ -760,7 +789,7 @@ expr elaborator::visit_placeholder(expr const & e, constraint_seq & cs) {
 level elaborator::replace_univ_placeholder(level const & l) {
     auto fn = [&](level const & l) {
         if (is_placeholder(l))
-            return some_level(mk_meta_univ(m_ngen.next()));
+            return some_level(mk_meta_univ(mk_fresh_name()));
         else
             return none_level();
     };
@@ -809,7 +838,7 @@ expr elaborator::visit_constant(expr const & e) {
                                << " expected, #" << ls.size() << " provided");
     // "fill" with meta universe parameters
     for (unsigned i = ls.size(); i < num_univ_params; i++)
-        ls.push_back(mk_meta_univ(m_ngen.next()));
+        ls.push_back(mk_meta_univ(mk_fresh_name()));
     lean_assert(num_univ_params == ls.size());
     return update_constant(e, to_list(ls.begin(), ls.end()));
 }
@@ -879,8 +908,7 @@ expr elaborator::instantiate_rev_locals(expr const & a, unsigned n, expr const *
 }
 
 expr elaborator::visit_binding(expr e, expr_kind k, constraint_seq & cs) {
-    flet<local_context> save1(m_context, m_context);
-    flet<local_context> save2(m_full_context, m_full_context);
+    flet<old_local_context> save1(m_context, m_context);
     buffer<expr> ds, ls, es;
     while (e.kind() == k) {
         es.push_back(e);
@@ -895,9 +923,7 @@ expr elaborator::visit_binding(expr e, expr_kind k, constraint_seq & cs) {
         ds.push_back(d);
         expr l   = mk_local(binding_name(e), d, binding_info(e));
         if (!is_match_binder_name(binding_name(e))) {
-            if (binding_info(e).is_contextual())
-                m_context.add_local(l);
-            m_full_context.add_local(l);
+            m_context.add_local(l);
         }
         ls.push_back(l);
         e = binding_body(e);
@@ -922,7 +948,7 @@ expr elaborator::visit_lambda(expr const & e, constraint_seq & cs) {
 
 expr elaborator::visit_typed_expr(expr const & e, constraint_seq & cs) {
     constraint_seq t_cs;
-    expr t      = visit(get_typed_expr_type(e), t_cs);
+    expr t      = ensure_type(visit_expecting_type(get_typed_expr_type(e), t_cs), t_cs);
     constraint_seq v_cs;
     expr v      = visit_expecting_type_of(get_typed_expr_expr(e), t, v_cs);
     expr v_type = infer_type(v, v_cs);
@@ -951,9 +977,9 @@ bool elaborator::is_sorry(expr const & e) const {
 }
 
 expr elaborator::visit_sorry(expr const & e) {
-    level u = mk_meta_univ(m_ngen.next());
+    level u = mk_meta_univ(mk_fresh_name());
     expr t  = mk_sort(u);
-    expr m  = m_full_context.mk_meta(m_ngen, some_expr(t), e.get_tag());
+    expr m  = m_context.mk_meta(some_expr(t), e.get_tag());
     return mk_app(update_constant(e, to_list(u)), m, e.get_tag());
 }
 
@@ -1126,8 +1152,7 @@ static expr assign_equation_lhs_metas(type_checker & tc, expr const & eqns) {
             new_eqs.push_back(eq);
         } else {
             buffer<expr> locals;
-            name_generator ngen = tc.mk_ngen();
-            eq = fun_to_telescope(ngen, eq, locals, optional<binder_info>());
+            eq = fun_to_telescope(eq, locals, optional<binder_info>());
             if (is_equation(eq)) {
                 name x("x");
                 lean_assert(num_fns <= locals.size());
@@ -1141,7 +1166,7 @@ static expr assign_equation_lhs_metas(type_checker & tc, expr const & eqns) {
                     } else if (r.first == Accessible) {
                         expr const & meta = r.second;
                         expr meta_type    = tc.infer(meta).first;
-                        expr new_local    = mk_local(tc.mk_fresh_name(), x.append_after(idx), meta_type, binder_info());
+                        expr new_local    = mk_local(mk_fresh_name(), x.append_after(idx), meta_type, binder_info());
                         for (expr & local : locals)
                             local = update_mlocal(local, replace_meta(mlocal_type(local), meta, new_local));
                         eq  = replace_meta(eq, meta, new_local);
@@ -1186,15 +1211,15 @@ constraint elaborator::mk_equations_cnstr(expr const & m, expr const & eqns) {
     environment const & _env = env();
     io_state const & _ios    = ios();
     justification j          = mk_failed_to_synthesize_jst(_env, m);
-    auto choice_fn = [=](expr const & meta, expr const & meta_type, substitution const & s,
-                         name_generator && ngen) {
+    auto choice_fn = [=](expr const & meta, expr const & meta_type, substitution const & s) {
         substitution new_s  = s;
         expr new_eqns       = new_s.instantiate_all(eqns);
         bool reject_type_is_meta = false;
         new_eqns            = solve_unassigned_mvars(new_s, new_eqns, reject_type_is_meta);
-        if (display_unassigned_mvars(new_eqns, new_s))
+        if (display_unassigned_mvars(new_eqns, new_s)) {
             return lazy_list<constraints>();
-        type_checker_ptr tc = mk_type_checker(_env, std::move(ngen));
+        }
+        type_checker_ptr tc = mk_type_checker(_env);
         new_eqns            = assign_equation_lhs_metas(*tc, new_eqns);
         expr val            = compile_equations(*tc, _ios, new_eqns, meta, meta_type);
         justification j     = mk_justification("equation compilation", some_expr(eqns));
@@ -1236,7 +1261,7 @@ expr elaborator::visit_equations(expr const & eqns, constraint_seq & cs) {
         expr new_eq;
         constraint_seq new_cs;
         buffer<expr> fns_locals;
-        fun_to_telescope(m_ngen, eq, fns_locals, optional<binder_info>());
+        fun_to_telescope(eq, fns_locals, optional<binder_info>());
         list<expr> locals = to_list(fns_locals.begin() + num_fns, fns_locals.end());
         if (first_eq) {
             // Replace first num_fns domains of eq with the ones in first_eq.
@@ -1281,10 +1306,11 @@ expr elaborator::visit_equations(expr const & eqns, constraint_seq & cs) {
 
     lean_assert(first_eq && is_lambda(*first_eq));
     expr type = binding_domain(*first_eq);
-    expr m = m_full_context.mk_meta(m_ngen, some_expr(type), eqns.get_tag());
+    expr m = m_context.mk_meta(some_expr(type), eqns.get_tag());
     register_meta(m);
     constraint c = mk_equations_cnstr(m, new_eqns);
-    cs += c;
+    /* We use stack policy for processing MaxDelayed constraints */
+    cs = c + cs;
     return m;
 }
 
@@ -1382,7 +1408,7 @@ expr elaborator::visit_structure_instance(expr const & e, constraint_seq & cs) {
     expr new_S_type = whnf(infer_type(new_S, cs), cs);
     tag S_tag = S.get_tag();
     while (is_pi(new_S_type)) {
-        expr m     = m_full_context.mk_meta(m_ngen, some_expr(binding_domain(new_S_type)), S_tag);
+        expr m     = m_context.mk_meta(some_expr(binding_domain(new_S_type)), S_tag);
         register_meta(m);
         new_S_args.push_back(m);
         new_S      = mk_app(new_S, m, S_tag);
@@ -1452,7 +1478,7 @@ expr elaborator::visit_structure_instance(expr const & e, constraint_seq & cs) {
                     throw_elaborator_exception(sstream() << "invalid structure instance, field '"
                                                << n << "' is missing", e);
                 }
-                v = m_full_context.mk_meta(m_ngen, some_expr(d_type), result_tag);
+                v = m_context.mk_meta(some_expr(d_type), result_tag);
                 register_meta(v);
             }
         }
@@ -1491,7 +1517,7 @@ expr elaborator::process_obtain_expr(list<obtain_struct> const & s_list, list<ex
         expr const & from_type = mlocal_type(from);
         // fix user visible name
         expr d0          = binding_domain(goal);
-        expr goal_domain = visit(d0, cs);
+        expr goal_domain = ensure_type(visit(d0, cs), cs);
         if (is_placeholder(d0) && !is_explicit_placeholder(d0))
             save_binder_type(d0, goal_domain);
         expr new_from    = ::lean::mk_local(mlocal_name(from), binding_name(goal), goal_domain, binder_info());
@@ -1500,10 +1526,8 @@ expr elaborator::process_obtain_expr(list<obtain_struct> const & s_list, list<ex
         justification j = mk_type_mismatch_jst(new_from, goal_domain, from_type, src);
         if (!is_def_eq(from_type, goal_domain, j, cs))
             throw unifier_exception(j, substitution());
-        flet<local_context> save1(m_context, m_context);
-        flet<local_context> save2(m_full_context, m_full_context);
+        flet<old_local_context> save1(m_context, m_context);
         m_context.add_local(new_from);
-        m_full_context.add_local(new_from);
         expr new_goal   = instantiate(binding_body(goal), new_from);
         expr r = process_obtain_expr(tail(s_list), tail(from_list), new_goal, false, cs, src);
         return Fun(new_from, r);
@@ -1532,7 +1556,7 @@ expr elaborator::process_obtain_expr(list<obtain_struct> const & s_list, list<ex
         declaration cases_on_decl = env().get({I_name, "cases_on"});
         levels cases_on_lvls = I_lvls;
         if (cases_on_decl.get_num_univ_params() != length(I_lvls))
-            cases_on_lvls = cons(mk_meta_univ(m_ngen.next()), cases_on_lvls);
+            cases_on_lvls = cons(mk_meta_univ(mk_fresh_name()), cases_on_lvls);
         expr cases_on = mk_constant(cases_on_decl.get_name(), cases_on_lvls);
         tag  g        = src.get_tag();
         expr R        = cases_on;
@@ -1546,13 +1570,13 @@ expr elaborator::process_obtain_expr(list<obtain_struct> const & s_list, list<ex
         };
         check_R_type();
         expr motive_type = binding_domain(R_type);
-        expr motive      = m_full_context.mk_meta(m_ngen, some_expr(motive_type), g);
+        expr motive      = m_context.mk_meta(some_expr(motive_type), g);
         R                = mk_app(R, motive, g);
         R_type           = whnf(instantiate(binding_body(R_type), motive), cs);
         for (unsigned i = 0; i < nindices; i++) {
             check_R_type();
             expr index_type = binding_domain(R_type);
-            expr index      = m_full_context.mk_meta(m_ngen, some_expr(index_type), g);
+            expr index      = m_context.mk_meta(some_expr(index_type), g);
             R               = mk_app(R, index, g);
             R_type          = whnf(instantiate(binding_body(R_type), index), cs);
         }
@@ -1608,7 +1632,7 @@ expr elaborator::visit_prenum(expr const & e, constraint_seq & cs) {
     lean_assert(is_prenum(e));
     mpz const & v  = prenum_value(e);
     tag e_tag      = e.get_tag();
-    expr A = m_full_context.mk_meta(m_ngen, none_expr(), e_tag);
+    expr A = m_context.mk_meta(none_expr(), e_tag);
     level A_lvl = sort_level(m_tc->ensure_type(A, cs));
     levels ls(A_lvl);
     bool is_strict = true;
@@ -1648,6 +1672,27 @@ expr elaborator::visit_prenum(expr const & e, constraint_seq & cs) {
     }
 }
 
+expr elaborator::visit_checkpoint_expr(expr const & e, constraint_seq & cs) {
+    expr arg = get_annotation_arg(e);
+    expr m;
+    m = m_context.mk_meta(none_expr(), e.get_tag());
+    register_meta(m);
+    old_local_context ctx      = m_context;
+    bool in_equation_lhs   = m_in_equation_lhs;
+    auto fn = [=](expr const & meta, expr const & /* type */, substitution const & /* s */) {
+        flet<old_local_context> set1(m_context, ctx);
+        flet<bool>              set2(m_in_equation_lhs, in_equation_lhs);
+        pair<expr, constraint_seq> rcs = visit(arg);
+        expr r                         = rcs.first;
+        constraint_seq cs              = rcs.second;
+        cs = mk_eq_cnstr(meta, r, justification()) + cs;
+        return lazy_list<constraints>(cs.to_list());
+    };
+    justification j;
+    cs += mk_choice_cnstr(m, fn, to_delay_factor(cnstr_group::Checkpoint), true, j);
+    return m;
+}
+
 expr elaborator::visit_core(expr const & e, constraint_seq & cs) {
     if (is_prenum(e)) {
         return visit_prenum(e, cs);
@@ -1659,8 +1704,6 @@ expr elaborator::visit_core(expr const & e, constraint_seq & cs) {
         return visit_let_value(e, cs);
     } else if (is_by(e)) {
         return visit_by(e, none_expr(), cs);
-    } else if (is_by_plus(e)) {
-        return visit_by_plus(e, none_expr(), cs);
     } else if (is_calc_annotation(e)) {
         return visit_calc_proof(e, none_expr(), cs);
     } else if (is_no_info(e)) {
@@ -1691,6 +1734,8 @@ expr elaborator::visit_core(expr const & e, constraint_seq & cs) {
         return visit_structure_instance(e, cs);
     } else if (is_obtain_expr(e)) {
         return visit_obtain_expr(e, cs);
+    } else if (is_checkpoint_annotation(e)) {
+        return visit_checkpoint_expr(e, cs);
     } else {
         switch (e.kind()) {
         case expr_kind::Local:      return e;
@@ -1702,6 +1747,9 @@ expr elaborator::visit_core(expr const & e, constraint_seq & cs) {
         case expr_kind::Lambda:     return visit_lambda(e, cs);
         case expr_kind::Pi:         return visit_pi(e, cs);
         case expr_kind::App:        return visit_app(e, cs);
+        case expr_kind::Let:
+            // NOT IMPLEMENTED YET
+            lean_unreachable();
         }
         lean_unreachable(); // LCOV_EXCL_LINE
     }
@@ -1805,17 +1853,19 @@ expr elaborator::visit(expr const & e, constraint_seq & cs) {
 unify_result_seq elaborator::solve(constraint_seq const & cs) {
     buffer<constraint> tmp;
     cs.linearize(tmp);
-    return unify(env(), tmp.size(), tmp.data(), m_ngen.mk_child(), substitution(), m_unifier_config);
+    return unify(env(), tmp.size(), tmp.data(), substitution(), m_unifier_config);
 }
 
 void elaborator::display_unsolved_proof_state(expr const & mvar, proof_state const & ps, char const * msg, expr const & pos) {
     lean_assert(is_metavar(mvar));
     if (!m_displayed_errors.contains(mlocal_name(mvar))) {
         m_displayed_errors.insert(mlocal_name(mvar));
-        auto out = regular(env(), ios());
-        flycheck_error err(out);
-        display_error_pos(out, pip(), pos);
-        out << " " << msg << "\n" << ps.pp(env(), ios()) << endl;
+        auto out = regular(env(), ios(), m_tc->get_type_context());
+        flycheck_error err(ios());
+        if (!err.enabled() || save_error(pip(), pos)) {
+            display_error_pos(out.get_stream(), out.get_options(), pip(), pos);
+            out << " " << msg << "\n" << ps.pp(out.get_formatter()) << endl;
+        }
     }
 }
 
@@ -1834,46 +1884,53 @@ optional<expr> elaborator::get_pre_tactic_for(expr const & mvar) {
 
 optional<tactic> elaborator::pre_tactic_to_tactic(expr const & pre_tac) {
     try {
-        auto fn = [=](goal const & g, options const & o, name_generator && ngen, expr const & e, optional<expr> const & expected_type,
+        auto fn = [=](goal const & g, options const & o, expr const & e, optional<expr> const & expected_type,
                       substitution const & subst, bool report_unassigned) {
             // Disable tactic hints when processing expressions nested in tactics.
             // We must do it otherwise, it is easy to make the system loop.
             bool use_tactic_hints = false;
             if (o == m_ctx.m_options) {
-                elaborator aux_elaborator(m_ctx, std::move(ngen));
+                elaborator aux_elaborator(m_ctx);
                 return aux_elaborator.elaborate_nested(g.to_context(), expected_type, e,
                                                        use_tactic_hints, subst, report_unassigned);
             } else {
                 elaborator_context aux_ctx(m_ctx, o);
-                elaborator aux_elaborator(aux_ctx, std::move(ngen));
+                elaborator aux_elaborator(aux_ctx);
                 return aux_elaborator.elaborate_nested(g.to_context(), expected_type, e,
                                                        use_tactic_hints, subst, report_unassigned);
             }
         };
         return optional<tactic>(expr_to_tactic(env(), fn, pre_tac, pip()));
     } catch (expr_to_tactic_exception & ex) {
-        auto out = regular(env(), ios());
-        flycheck_error err(out);
-        display_error_pos(out, pip(), ex.get_expr());
-        out << " " << ex.what();
-        out << pp_indent_expr(out.get_formatter(), pre_tac) << endl << "failed at:"
-            << pp_indent_expr(out.get_formatter(), ex.get_expr()) << endl;
+        auto out = regular(env(), ios(), m_tc->get_type_context());
+        flycheck_error err(ios());
+        if (!err.enabled() || save_error(pip(), ex.get_expr())) {
+            display_error_pos(out, pip(), ex.get_expr());
+            out << " " << ex.what();
+            out << pp_indent_expr(out.get_formatter(), pre_tac) << endl << "failed at:"
+                << pp_indent_expr(out.get_formatter(), ex.get_expr()) << endl;
+        }
         return optional<tactic>();
     }
 }
 
 void elaborator::display_tactic_exception(tactic_exception const & ex, proof_state const & ps, expr const & pre_tac) {
-    auto out = regular(env(), ios());
-    flycheck_error err(out);
-    if (optional<expr> const & e = ex.get_main_expr())
+    auto out = regular(env(), ios(), m_tc->get_type_context());
+    flycheck_error err(ios());
+    if (optional<expr> const & e = ex.get_main_expr()) {
+        if (err.enabled() && !save_error(pip(), *e))
+            return;
         display_error_pos(out, pip(), *e);
-    else
+    } else {
+        if (err.enabled() && !save_error(pip(), pre_tac))
+            return;
         display_error_pos(out, pip(), pre_tac);
+    }
     out << ex.pp(out.get_formatter()) << "\nproof state:\n";
     if (auto curr_ps = ex.get_proof_state())
-        out << curr_ps->pp(env(), ios()) << "\n";
+        out << curr_ps->pp(out.get_formatter()) << "\n";
     else
-        out << ps.pp(env(), ios()) << "\n";
+        out << ps.pp(out.get_formatter()) << "\n";
 }
 
 void elaborator::display_unsolved_subgoals(expr const & mvar, proof_state const & ps, expr const & pos) {
@@ -1966,10 +2023,10 @@ void elaborator::show_goal(proof_state const & ps, expr const & start, expr cons
     if (curr_pos->first < line || (curr_pos->first == line && curr_pos->second < col))
         return;
     m_ctx.reset_show_goal_at();
-    auto out = regular(env(), ios());
+    auto out = regular(env(), ios(), m_tc->get_type_context());
     print_lean_info_header(out.get_stream());
     out << "position " << curr_pos->first << ":" << curr_pos->second << "\n";
-    out << ps.pp(env(), ios()) << "\n";
+    out << ps.pp(out.get_formatter()) << "\n";
     print_lean_info_footer(out.get_stream());
 }
 
@@ -1986,11 +2043,10 @@ bool elaborator::try_using_begin_end(substitution & subst, expr const & mvar, pr
                 throw_elaborator_exception("invalid nested begin-end block, there are no goals to be solved", ptac);
             goal  g             = head(gs);
             expr mvar           = g.get_mvar();
-            name_generator ngen = ps.get_ngen();
-            proof_state focus_ps(ps, goals(g), ngen.mk_child());
+            proof_state focus_ps(ps, goals(g));
             if (!try_using_begin_end(subst, mvar, focus_ps, ptac))
                 return false;
-            ps = proof_state(ps, tail(gs), subst, ngen);
+            ps = proof_state(ps, tail(gs), subst);
         } else {
             show_goal(ps, start_expr, end_expr, ptac);
             expr new_ptac = subst.instantiate_all(ptac);
@@ -2006,11 +2062,11 @@ bool elaborator::try_using_begin_end(substitution & subst, expr const & mvar, pr
                     }
                     if (m_ctx.m_flycheck_goals) {
                         if (auto p = pip()->get_pos_info(ptac)) {
-                            auto out = regular(env(), ios());
-                            flycheck_information info(out);
+                            auto out = regular(env(), ios(), m_tc->get_type_context());
+                            flycheck_information info(ios());
                             if (info.enabled()) {
                                 display_information_pos(out, pip()->get_file_name(), p->first, p->second);
-                                out << " proof state:\n" << ps.pp(env(), ios()) << "\n";
+                                out << " proof state:\n" << ps.pp(out.get_formatter()) << "\n";
                             }
                         }
                     }
@@ -2021,11 +2077,13 @@ bool elaborator::try_using_begin_end(substitution & subst, expr const & mvar, pr
                 } catch (exception &) {
                     throw;
                 } catch (throwable & ex) {
-                    auto out = regular(env(), ios());
-                    flycheck_error err(out);
-                    display_error_pos(out, pip(), ptac);
-                    out << ex.what() << "\nproof state:\n";
-                    out << ps.pp(env(), ios()) << "\n";
+                    auto out = regular(env(), ios(), m_tc->get_type_context());
+                    flycheck_error err(ios());
+                    if (!err.enabled() || save_error(pip(), ptac)) {
+                        display_error_pos(out, pip(), ptac);
+                        out << ex.what() << "\nproof state:\n";
+                        out << ps.pp(out.get_formatter()) << "\n";
+                    }
                     return false;
                 }
             } else {
@@ -2065,7 +2123,7 @@ void elaborator::solve_unassigned_mvar(substitution & subst, expr mvar, name_set
         throw_elaborator_exception("failed to synthesize placeholder, type is a unknown (i.e., it is a metavariable) "
                                    "(solution: provide type explicitly)", mvar);
     }
-    proof_state ps = to_proof_state(*meta, type, subst, m_ngen.mk_child());
+    proof_state ps = to_proof_state(*meta, type, subst);
     if (auto pre_tac = get_pre_tactic_for(mvar)) {
         if (is_begin_end_annotation(*pre_tac)) {
             try_using_begin_end(subst, mvar, ps, *pre_tac);
@@ -2144,6 +2202,13 @@ static void visit_unassigned_mvars(expr const & e, std::function<void(expr const
                 visit(binding_body(e));
             }
             break;
+        case expr_kind::Let:
+            if (should_visit(e)) {
+                visit(let_type(e));
+                visit(let_value(e));
+                visit(let_body(e));
+            }
+            break;
         }
     };
 
@@ -2172,7 +2237,7 @@ bool elaborator::display_unassigned_mvars(expr const & e, substitution const & s
                     expr meta      = tmp_s.instantiate(*it);
                     expr meta_type = tmp_s.instantiate(type_checker(env()).infer(meta).first);
                     goal g(meta, meta_type);
-                    proof_state ps(goals(g), s, m_ngen, constraints());
+                    proof_state ps(goals(g), s, constraints());
                     display_unsolved_proof_state(mvar, ps, "don't know how to synthesize placeholder");
                     r = true;
                 }
@@ -2269,7 +2334,6 @@ void elaborator::check_used_local_tactic_hints() {
 auto elaborator::operator()(list<expr> const & ctx, expr const & e, bool _ensure_type)
 -> std::tuple<expr, level_param_names> {
     m_context.set_ctx(ctx);
-    m_full_context.set_ctx(ctx);
     constraint_seq cs;
     expr r = visit(e, cs);
     if (_ensure_type)
@@ -2368,8 +2432,6 @@ elaborate_result elaborator::elaborate_nested(list<expr> const & ctx, optional<e
         cls.add(*expected_type);
     }
     m_context.set_ctx(ctx);
-    m_context.set_ctx(ctx);
-    m_full_context.set_ctx(ctx);
     flet<bool> set_discard(m_unifier_config.m_discard, false);
     flet<bool> set_use_hints(m_use_tactic_hints, use_tactic_hints);
     constraint_seq cs;
@@ -2377,7 +2439,7 @@ elaborate_result elaborator::elaborate_nested(list<expr> const & ctx, optional<e
 
     buffer<constraint> tmp;
     cs.linearize(tmp);
-    auto p  = unify(env(), tmp.size(), tmp.data(), m_ngen.mk_child(), subst, m_unifier_config).pull();
+    auto p  = unify(env(), tmp.size(), tmp.data(), subst, m_unifier_config).pull();
     lean_assert(p);
     substitution new_subst = p->first.first;
     constraints rcs        = p->first.second;
@@ -2399,19 +2461,21 @@ static name * g_tmp_prefix = nullptr;
 
 std::tuple<expr, level_param_names> elaborate(elaborator_context & env, list<expr> const & ctx, expr const & e,
                                               bool ensure_type, bool nice_mvar_names) {
-    return elaborator(env, name_generator(*g_tmp_prefix), nice_mvar_names)(ctx, e, ensure_type);
+    return elaborator(env, nice_mvar_names)(ctx, e, ensure_type);
 }
 
 std::tuple<expr, expr, level_param_names> elaborate(elaborator_context & env, name const & n, expr const & t,
                                                     expr const & v) {
-    return elaborator(env, name_generator(*g_tmp_prefix))(t, v, n);
+    return elaborator(env)(t, v, n);
 }
 
 void initialize_elaborator() {
     g_tmp_prefix = new name(name::mk_internal_unique_name());
+    g_elaborator_reported_errors = new elaborator_reported_errors();
 }
 
 void finalize_elaborator() {
     delete g_tmp_prefix;
+    delete g_elaborator_reported_errors;
 }
 }

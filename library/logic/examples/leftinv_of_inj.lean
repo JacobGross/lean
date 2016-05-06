@@ -20,10 +20,10 @@ assume inj  : ∀ a₁ a₂, f a₁ = f a₂ → a₁ = a₂,
 let  finv : B → A := mk_left_inv f in
 have linv : left_inverse finv f, from
   λ a,
-    assert ex : ∃ a₁ : A, f a₁ = f a, from exists.intro a rfl,
-    assert h₁ : f (some ex) = f a,    from !some_spec,
+    have ex : ∃ a₁ : A, f a₁ = f a, from exists.intro a rfl,
+    have h₁ : f (some ex) = f a,    from !some_spec,
     begin
-      esimp [mk_left_inv, compose, id],
+      esimp [mk_left_inv, comp, id],
       rewrite [dif_pos ex],
       exact (!inj h₁)
     end,

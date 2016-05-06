@@ -19,12 +19,8 @@ Author: Leonardo de Moura
 using namespace lean;
 
 static environment add_decl(environment const & env, declaration const & d) {
-    auto cd = check(env, d, name_generator("test"));
+    auto cd = check(env, d);
     return env.add(cd);
-}
-
-formatter mk_formatter(environment const & env) {
-    return mk_print_formatter_factory()(env, options());
 }
 
 static void tst1() {
@@ -37,31 +33,31 @@ static void tst1() {
         auto env3 = add_decl(env2, mk_definition("Prop", level_param_names(), mk_Type(), mk_Prop()));
         lean_unreachable();
     } catch (kernel_exception & ex) {
-        std::cout << "expected error: " << ex.pp(mk_formatter(ex.get_environment())) << "\n";
+        std::cout << "expected error: " << ex.what() << "\n";
     }
     try {
         auto env4 = add_decl(env2, mk_definition("BuggyProp", level_param_names(), mk_Prop(), mk_Prop()));
         lean_unreachable();
     } catch (kernel_exception & ex) {
-        std::cout << "expected error: " << ex.pp(mk_formatter(ex.get_environment())) << "\n";
+        std::cout << "expected error: " << ex.what() << "\n";
     }
     try {
         auto env5 = add_decl(env2, mk_definition("Type1", level_param_names(), mk_metavar("T", mk_sort(mk_meta_univ("l"))), mk_Type()));
         lean_unreachable();
     } catch (kernel_exception & ex) {
-        std::cout << "expected error: " << ex.pp(mk_formatter(ex.get_environment())) << "\n";
+        std::cout << "expected error: " << ex.what() << "\n";
     }
     try {
         auto env6 = add_decl(env2, mk_definition("Type1", level_param_names(), mk_Type(), mk_metavar("T", mk_sort(mk_meta_univ("l")))));
         lean_unreachable();
     } catch (kernel_exception & ex) {
-        std::cout << "expected error: " << ex.pp(mk_formatter(ex.get_environment())) << "\n";
+        std::cout << "expected error: " << ex.what() << "\n";
     }
     try {
         auto env7 = add_decl(env2, mk_definition("foo", level_param_names(), mk_Type() >> mk_Type(), mk_Prop()));
         lean_unreachable();
     } catch (kernel_exception & ex) {
-        std::cout << "expected error: " << ex.pp(mk_formatter(ex.get_environment())) << "\n";
+        std::cout << "expected error: " << ex.what() << "\n";
     }
     expr Type = mk_Type();
     expr A = Local("A", Type);
@@ -72,12 +68,12 @@ static void tst1() {
     expr Prop = mk_Prop();
     expr c  = mk_local("c", Prop);
     expr id = Const("id");
-    type_checker checker(env3, name_generator("tmp"));
+    type_checker checker(env3);
     lean_assert(checker.check(mk_app(id, Prop)).first == Prop >> Prop);
     lean_assert(checker.whnf(mk_app(id, Prop, c)).first == c);
     lean_assert(checker.whnf(mk_app(id, Prop, mk_app(id, Prop, mk_app(id, Prop, c)))).first == c);
 
-    type_checker checker2(env2, name_generator("tmp"));
+    type_checker checker2(env2);
     lean_assert(checker2.whnf(mk_app(id, Prop, mk_app(id, Prop, mk_app(id, Prop, c)))).first == mk_app(id, Prop, mk_app(id, Prop, mk_app(id, Prop, c))));
 }
 
@@ -99,7 +95,7 @@ static void tst2() {
     env = add_decl(env, mk_definition("id", level_param_names(),
                                       Pi(A, A >> A),
                                       Fun({A, a}, a)));
-    type_checker checker(env, name_generator("tmp"));
+    type_checker checker(env);
     expr f96 = Const(name(base, 96));
     expr f97 = Const(name(base, 97));
     expr f98 = Const(name(base, 98));
@@ -152,7 +148,7 @@ static void tst3() {
     expr proj1 = Const("proj1");
     expr a = Const("a");
     expr b = Const("b");
-    type_checker checker(env, name_generator("tmp"));
+    type_checker checker(env);
     lean_assert_eq(checker.whnf(mk_app(proj1, mk_app(proj1, mk_app(mk, mk_app(id, A, mk_app(mk, a, b)), b)))).first, a);
 }
 

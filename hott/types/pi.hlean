@@ -37,6 +37,16 @@ namespace pi
   definition eq_of_homotopy_idp (f : Πa, B a) : eq_of_homotopy (λx : A, refl (f x)) = refl f :=
   !eq_of_homotopy_eta
 
+  /- homotopy.symm is an equivalence -/
+  definition is_equiv_homotopy_symm : is_equiv (homotopy.symm : f ~ g → g ~ f) :=
+  begin
+    fapply adjointify homotopy.symm homotopy.symm,
+    { intro p, apply eq_of_homotopy, intro a,
+      unfold homotopy.symm, apply inv_inv },
+    { intro p, apply eq_of_homotopy, intro a,
+      unfold homotopy.symm, apply inv_inv }
+  end
+
   /-
     The identification of the path space of a dependent function space,
     up to equivalence, is of course just funext.
@@ -174,7 +184,15 @@ namespace pi
 
   /- The functoriality of [forall] is slightly subtle: it is contravariant in the domain type and covariant in the codomain, but the codomain is dependent on the domain. -/
 
-  definition pi_functor [unfold_full] : (Π(a:A), B a) → (Π(a':A'), B' a') := λg a', f1 a' (g (f0 a'))
+  definition pi_functor [unfold_full] : (Π(a:A), B a) → (Π(a':A'), B' a') :=
+  λg a', f1 a' (g (f0 a'))
+
+  definition pi_functor_left [unfold_full] (B : A → Type) : (Π(a:A), B a) → (Π(a':A'), B (f0 a')) :=
+  pi_functor f0 (λa, id)
+
+  definition pi_functor_right [unfold_full] {B' : A → Type} (f1 : Π(a:A), B a → B' a)
+    : (Π(a:A), B a) → (Π(a:A), B' a) :=
+  pi_functor id f1
 
   definition ap_pi_functor {g g' : Π(a:A), B a} (h : g ~ g')
     : ap (pi_functor f0 f1) (eq_of_homotopy h)
@@ -197,12 +215,12 @@ namespace pi
     begin
       intro h, apply eq_of_homotopy, intro a', esimp,
       rewrite [adj f0 a',-tr_compose,fn_tr_eq_tr_fn _ f1,right_inv (f1 _)],
-      apply apd
+      apply apdt
     end,
     begin
       intro h, apply eq_of_homotopy, intro a, esimp,
       rewrite [left_inv (f1 _)],
-      apply apd
+      apply apdt
     end
   end
 
@@ -214,7 +232,7 @@ namespace pi
     : (Πa, B a) ≃ (Πa', B' a') :=
   pi_equiv_pi_of_is_equiv (to_fun f0) (λa', to_fun (f1 a'))
 
-  definition pi_equiv_pi_id [constructor] {P Q : A → Type} (g : Πa, P a ≃ Q a)
+  definition pi_equiv_pi_right [constructor] {P Q : A → Type} (g : Πa, P a ≃ Q a)
     : (Πa, P a) ≃ (Πa, Q a) :=
   pi_equiv_pi equiv.refl g
 
@@ -226,9 +244,9 @@ namespace pi
     fapply equiv.MK,
     { intro f, exact f (center A)},
     { intro b a, exact (center_eq a) ▸ b},
-    { intro b, rewrite [hprop_eq_of_is_contr (center_eq (center A)) idp]},
+    { intro b, rewrite [prop_eq_of_is_contr (center_eq (center A)) idp]},
     { intro f, apply eq_of_homotopy, intro a, induction (center_eq a),
-      rewrite [hprop_eq_of_is_contr (center_eq (center A)) idp]}
+      rewrite [prop_eq_of_is_contr (center_eq (center A)) idp]}
   end
 
   definition pi_equiv_of_is_contr_right [constructor] [H : Πa, is_contr (B a)]
@@ -238,7 +256,7 @@ namespace pi
     { intro f, exact star},
     { intro u a, exact !center},
     { intro u, induction u, reflexivity},
-    { intro f, apply eq_of_homotopy, intro a, apply is_hprop.elim}
+    { intro f, apply eq_of_homotopy, intro a, apply is_prop.elim}
   end
 
   /- Interaction with other type constructors -/
@@ -298,15 +316,15 @@ namespace pi
   theorem is_trunc_not [instance] (n : trunc_index) (A : Type) : is_trunc (n.+1) ¬A :=
   by unfold not;exact _
 
-  theorem is_hprop_pi_eq [instance] [priority 490] (a : A) : is_hprop (Π(a' : A), a = a') :=
-  is_hprop_of_imp_is_contr
+  theorem is_prop_pi_eq [instance] [priority 490] (a : A) : is_prop (Π(a' : A), a = a') :=
+  is_prop_of_imp_is_contr
   ( assume (f : Πa', a = a'),
-    assert H : is_contr A, from is_contr.mk a f,
-    _)
+    have is_contr A, from is_contr.mk a f,
+    by exact _) /- force type clas resolution -/
 
-  theorem is_hprop_neg (A : Type) : is_hprop (¬A) := _
+  theorem is_prop_neg (A : Type) : is_prop (¬A) := _
   local attribute ne [reducible]
-  theorem is_hprop_ne [instance] {A : Type} (a b : A) : is_hprop (a ≠ b) := _
+  theorem is_prop_ne [instance] {A : Type} (a b : A) : is_prop (a ≠ b) := _
 
   /- Symmetry of Π -/
   definition is_equiv_flip [instance] {P : A → A' → Type}

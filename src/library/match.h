@@ -6,7 +6,6 @@ Author: Leonardo de Moura
 */
 #pragma once
 #include <functional>
-#include "util/lua.h"
 #include "util/optional.h"
 #include "util/lbool.h"
 #include "util/buffer.h"
@@ -91,8 +90,6 @@ public:
    \pre \c esubst and \c lsubst must be big enough to store the substitution.
    That is, their size should be > than the index of any special metavariable occuring in p.
 
-   If prefix is provided, then it is used for creating unique names.
-
    If name_subst is different from nullptr, then the procedure stores in name_subst
    a mapping for binder names. It maps the binder names used in the pattern \c p into
    the binder names used in \c t.
@@ -102,15 +99,14 @@ public:
    If \c assigned is provided, then it is set to true if \c esubst or \c lsubst is updated.
 */
 bool match(expr const & p, expr const & t, buffer<optional<level>> & lsubst, buffer<optional<expr>> & esubst,
-           name const * prefix = nullptr, name_map<name> * name_subst = nullptr, match_plugin const * plugin = nullptr,
+           name_map<name> * name_subst = nullptr, match_plugin const * plugin = nullptr,
            bool * assigned = nullptr);
 bool match(expr const & p, expr const & t,
            unsigned lsubst_sz, optional<level> * lsubst,
            unsigned esubst_sz, optional<expr> * esubst,
-           name const * prefix = nullptr, name_map<name> * name_subst = nullptr,
+           name_map<name> * name_subst = nullptr,
            match_plugin const * plugin = nullptr, bool * assigned = nullptr);
 
-void open_match(lua_State * L);
 void initialize_match();
 void finalize_match();
 }

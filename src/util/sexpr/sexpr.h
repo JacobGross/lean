@@ -10,7 +10,6 @@ Author: Leonardo de Moura
 #include <algorithm>
 #include <functional>
 #include <memory>
-#include "util/lua.h"
 #include "util/serializer.h"
 
 namespace lean {
@@ -65,6 +64,7 @@ public:
     ~sexpr();
 
     sexpr_kind kind() const;
+    sexpr_cell const * raw() const { return m_ptr; }
 
     explicit operator bool() const { return m_ptr != nullptr; }
 
@@ -105,7 +105,6 @@ public:
     virtual ~sexpr_ext_atom() {}
     virtual int cmp(sexpr_ext_atom const & e) const = 0;
     virtual unsigned hash() const = 0;
-    virtual int push_lua(lua_State * L) const = 0;
     virtual void display(std::ostream & out) const = 0;
 };
 
@@ -184,8 +183,6 @@ serializer & operator<<(serializer & s, sexpr const & a);
 sexpr read_sexpr(deserializer & d);
 inline deserializer & operator>>(deserializer & d, sexpr & a) { a = read_sexpr(d); return d; }
 
-UDATA_DEFS(sexpr)
-void open_sexpr(lua_State * L);
 void initialize_sexpr();
 void finalize_sexpr();
 }

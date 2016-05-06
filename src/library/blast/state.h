@@ -154,7 +154,6 @@ class branch {
     todo_queue               m_todo_queue;
     forward_deps             m_forward_deps; // given an entry (h -> {h_1, ..., h_n}), we have that each h_i uses h.
     expr                     m_target;
-    hypothesis_idx_set       m_target_deps;
     discr_tree               m_hyp_index;
     branch_extension **      m_extensions;
 public:
@@ -205,7 +204,6 @@ class state {
     void remove_from_indices(hypothesis const & h, hypothesis_idx hidx);
 
     void del_hypotheses(buffer<hypothesis_idx> const & to_delete, hypothesis_idx_set const & to_delete_set);
-    bool safe_to_delete(buffer<hypothesis_idx> const & to_delete);
 
     void display_active(std::ostream & out) const;
 
@@ -264,9 +262,7 @@ public:
     hypothesis_idx_set get_direct_forward_deps(hypothesis_idx hidx) const;
     bool has_forward_deps(hypothesis_idx hidx) const { return !get_direct_forward_deps(hidx).empty(); }
     /** \brief Return true iff other hypotheses or the target type depends on hidx. */
-    bool has_target_forward_deps(hypothesis_idx hidx) const {
-        return has_forward_deps(hidx) || m_branch.m_target_deps.contains(hidx);
-    }
+    bool has_target_forward_deps(hypothesis_idx hidx) const;
     /** \brief Collect in \c result the hypotheses that (directly) depend on \c hidx and satisfy \c pred. */
     template<typename P>
     void collect_direct_forward_deps(hypothesis_idx hidx, hypothesis_idx_buffer_set & result, P && pred) {
@@ -300,6 +296,8 @@ public:
     /** \brief Select next hypothesis in the TODO queue, return none if the TODO queue is empty. */
     optional<hypothesis_idx> select_hypothesis_to_activate();
     void activate_hypothesis(hypothesis_idx hidx);
+
+    bool is_active(hypothesis_idx hidx) const { return m_branch.m_active.contains(hidx); }
 
     /** \brief Deactivate all active hypotheses */
     void deactivate_all();
@@ -352,7 +350,8 @@ public:
     void set_target(expr const & t);
     expr const & get_target() const { return m_branch.m_target; }
     /** \brief Return true iff the target depends on the given hypothesis */
-    bool target_depends_on(hypothesis_idx hidx) const { return m_branch.m_target_deps.contains(hidx); }
+    bool target_depends_on(buffer<hypothesis_idx> const & hidxs) const;
+    bool target_depends_on(hypothesis_idx hidx) const;
     bool target_depends_on(expr const & h) const;
 
     /************************
@@ -456,14 +455,14 @@ public:
     /** \brief Convert current branch into a goal.
         This is mainly used for pretty printing. However, in the future, we may use this capability
         to invoke the tactic framework from the blast tactic. */
-    goal to_goal() const;
+    goal to_goal(bool include_inactive = true) const;
 
     /** \brief Convert expression into a kernel expression that can be pretty printed using better names,
         and types can be inferred by pretty printer. */
     expr to_kernel_expr(expr const & e) const;
 
-    void display(io_state_stream const & ios) const;
-    void display(environment const & env, io_state const & ios) const;
+    void display(io_state_stream const & ios, bool include_inactive = true) const;
+    void display(environment const & env, io_state const & ios, bool include_inactive = true) const;
 
     #ifdef LEAN_DEBUG
     bool check_invariant() const;

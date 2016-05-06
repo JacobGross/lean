@@ -226,23 +226,14 @@ tactic expr_to_tactic(type_checker & tc, elaborate_fn const & fn, expr e, pos_in
             throw expr_to_tactic_exception(e, sstream() << "invalid number of universes");
         if (num_ls < num_ps) {
             buffer<level> extra_ls;
-            name_generator ngen = tc.mk_ngen();
             for (unsigned i = num_ls; i < num_ps; i++)
-                extra_ls.push_back(mk_meta_univ(ngen.next()));
+                extra_ls.push_back(mk_meta_univ(mk_fresh_name()));
             ls = append(ls, to_list(extra_ls.begin(), extra_ls.end()));
         }
         v = instantiate_univ_params(v, ps, ls);
         v = apply_beta(v, locals.size(), locals.data());
         return expr_to_tactic(tc, fn, v, p);
     }
-}
-
-static name * g_tmp_prefix = nullptr;
-LEAN_THREAD_VALUE(unsigned, g_expr_tac_id, 0);
-static name_generator next_name_generator() {
-    unsigned r = g_expr_tac_id;
-    g_expr_tac_id++;
-    return name_generator(name(*g_tmp_prefix, r));
 }
 
 unsigned get_unsigned(type_checker & tc, expr const & e, expr const & ref) {
@@ -295,7 +286,7 @@ public:
 
 tactic expr_to_tactic(environment const & env, elaborate_fn const & fn, expr const & e, pos_info_provider const * p) {
     bool memoize             = false;
-    type_checker tc(env, next_name_generator(), std::unique_ptr<converter>(new tac_builtin_opaque_converter(env)), memoize);
+    type_checker tc(env, std::unique_ptr<converter>(new tac_builtin_opaque_converter(env)), memoize);
     return expr_to_tactic(tc, fn, e, p);
 }
 
@@ -357,24 +348,14 @@ void register_num_tac(name const & n, std::function<tactic(unsigned k)> f) {
 }
 
 static name * g_by_name = nullptr;
-static name * g_by_plus_name = nullptr;
 
 expr mk_by(expr const & e) { return mk_annotation(*g_by_name, e); }
 bool is_by(expr const & e) { return is_annotation(e, *g_by_name); }
 expr const & get_by_arg(expr const & e) { lean_assert(is_by(e)); return get_annotation_arg(e); }
 
-expr mk_by_plus(expr const & e) { return mk_annotation(*g_by_plus_name, e); }
-bool is_by_plus(expr const & e) { return is_annotation(e, *g_by_plus_name); }
-expr const & get_by_plus_arg(expr const & e) { lean_assert(is_by_plus(e)); return get_annotation_arg(e); }
-
 void initialize_expr_to_tactic() {
-    g_tmp_prefix        = new name(name::mk_internal_unique_name());
-
     g_by_name           = new name("by");
     register_annotation(*g_by_name);
-
-    g_by_plus_name      = new name("by+");
-    register_annotation(*g_by_plus_name);
 
     g_map               = new expr_to_tactic_map();
 
@@ -417,10 +398,6 @@ void initialize_expr_to_tactic() {
                         []() { return beta_tactic(); });
     register_bin_tac(get_tactic_and_then_name(),
                      [](tactic const & t1, tactic const & t2) { return then(t1, t2); });
-    register_bin_tac(get_tactic_append_name(),
-                     [](tactic const & t1, tactic const & t2) { return append(t1, t2); });
-    register_bin_tac(get_tactic_interleave_name(),
-                     [](tactic const & t1, tactic const & t2) { return interleave(t1, t2); });
     register_bin_tac(get_tactic_par_name(),
                      [](tactic const & t1, tactic const & t2) { return par(t1, t2); });
     register_bin_tac(get_tactic_or_else_name(),
@@ -472,7 +449,5 @@ void finalize_expr_to_tactic() {
     delete g_map;
     delete g_tactic_opcode;
     delete g_by_name;
-    delete g_by_plus_name;
-    delete g_tmp_prefix;
 }
 }

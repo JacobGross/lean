@@ -23,7 +23,7 @@ section division_ring
 
   protected definition algebra.div (a b : A) : A := a * b⁻¹
 
-  definition division_ring_has_div [reducible] [instance] : has_div A :=
+  definition division_ring_has_div [instance] : has_div A :=
   has_div.mk algebra.div
 
   lemma division.def (a b : A) : a / b = a * b⁻¹ :=
@@ -58,7 +58,7 @@ section division_ring
     absurd C1 zero_ne_one
 
   theorem one_inv_eq : 1⁻¹ = (1:A) :=
-  by rewrite [-mul_one, inv_mul_cancel (ne.symm (@zero_ne_one A _))]
+  by rewrite [-mul_one ((1:A)⁻¹), inv_mul_cancel (ne.symm (@zero_ne_one A _))]
 
   theorem div_one (a : A) : a / 1 = a :=
     by rewrite [*division.def, one_inv_eq, mul_one]
@@ -69,7 +69,7 @@ section division_ring
   -- domain, but let's not define that class for now.
   theorem division_ring.mul_ne_zero (Ha : a ≠ 0) (Hb : b ≠ 0) : a * b ≠ 0 :=
     assume H : a * b = 0,
-    have C1 : a = 0, by rewrite [-mul_one, -(mul_one_div_cancel Hb), -mul.assoc, H, zero_mul],
+    have C1 : a = 0, by rewrite [-(mul_one a), -(mul_one_div_cancel Hb), -mul.assoc, H, zero_mul],
       absurd C1 Ha
 
   theorem mul_ne_zero_comm (H : a * b ≠ 0) : b * a ≠ 0 :=
@@ -115,7 +115,7 @@ section division_ring
     symm (eq_one_div_of_mul_eq_one this)
 
   theorem division_ring.one_div_neg_eq_neg_one_div (H : a ≠ 0) : 1 / (- a) = - (1 / a) :=
-    have -1 ≠ 0, from
+    have -1 ≠ (0:A), from
       (suppose -1 = 0, absurd (symm (calc
           1 = -(-1) : neg_neg
         ... = -0    : this
@@ -190,7 +190,7 @@ section division_ring
   theorem eq_div_iff_mul_eq (a : A) {b : A} (Hc : c ≠ 0) : a = b / c ↔ a * c = b :=
     iff.intro
       (suppose a = b / c, by rewrite [this, (!div_mul_cancel Hc)])
-      (suppose a * c = b, by rewrite [-(!mul_div_cancel Hc), this])
+      (suppose a * c = b, begin rewrite [-mul_div_cancel a Hc, this] end)
 
   theorem eq_div_of_mul_eq (a b : A) {c : A} (Hc : c ≠ 0) : a * c = b → a = b / c :=
     iff.mpr (!eq_div_iff_mul_eq Hc)
@@ -243,7 +243,7 @@ section field
     by rewrite [mul.comm, (!div_mul_cancel Hb)]
 
   theorem one_div_add_one_div (Ha : a ≠ 0) (Hb : b ≠ 0) : 1 / a + 1 / b = (a + b) / (a * b) :=
-    assert a * b ≠ 0, from (division_ring.mul_ne_zero Ha Hb),
+    have a * b ≠ 0, from (division_ring.mul_ne_zero Ha Hb),
     by rewrite [add.comm, -(field.div_mul_left Ha this), -(field.div_mul_right Hb this), *division.def,
                 -right_distrib]
 
@@ -278,7 +278,7 @@ section field
 
   theorem mul_eq_mul_of_div_eq_div (a : A) {b : A} (c : A) {d : A} (Hb : b ≠ 0)
       (Hd : d ≠ 0) (H : a / b = c / d) : a * d = c * b :=
-    by rewrite [-mul_one, mul.assoc, (mul.comm d), -mul.assoc, -(div_self Hb),
+    by rewrite [-mul_one (a*d), mul.assoc, (mul.comm d), -mul.assoc, -(div_self Hb),
          -(!field.div_mul_eq_mul_div_comm Hb), H, (div_mul_eq_mul_div), (!div_mul_cancel Hd)]
 
   theorem field.one_div_div (Ha : a ≠ 0) (Hb : b ≠ 0) : 1 / (a / b) = b / a :=
@@ -332,10 +332,9 @@ section discrete_field
   decidable.by_cases
     (suppose x = 0, sum.inl this)
     (suppose x ≠ 0,
-      sum.inr (by rewrite [-one_mul, -(inv_mul_cancel this), mul.assoc, H, mul_zero]))
+      sum.inr (by rewrite [-one_mul y, -(inv_mul_cancel this), mul.assoc, H, mul_zero]))
 
-  definition discrete_field.to_integral_domain [trans_instance] [reducible] :
-    integral_domain A :=
+  definition discrete_field.to_integral_domain [trans_instance] : integral_domain A :=
   ⦃ integral_domain, s,
     eq_zero_sum_eq_zero_of_mul_eq_zero := discrete_field.eq_zero_sum_eq_zero_of_mul_eq_zero⦄
 

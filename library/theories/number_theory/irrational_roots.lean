@@ -29,9 +29,9 @@ section
     from even_of_exists (exists.intro _ (eq.symm this)),
   have even b,
     from even_of_even_pow this,
-  assert 2 ∣ gcd a b,
+  have 2 ∣ gcd a b,
     from dvd_gcd (dvd_of_even `even a`) (dvd_of_even `even b`),
-  have 2 ∣ 1,
+  have (2:nat) ∣ 1,
     begin rewrite [gcd_eq_one_of_coprime co at this], exact this end,
   show false, from absurd `2 ∣ 1` dec_trivial
 end
@@ -51,7 +51,7 @@ section
     (suppose b = 0,
       have a^n = 0,
         by rewrite [H, this, zero_pow npos],
-      assert a = 0,
+      have a = 0,
         from eq_zero_of_pow_eq_zero this,
       show false,
         from ne_of_lt `0 < a` this⁻¹),
@@ -59,7 +59,7 @@ section
     take p,
     suppose prime p,
     suppose p ∣ b,
-    assert p ∣ b^n,
+    have p ∣ b^n,
       from dvd_pow_of_dvd_of_pos `p ∣ b` `n > 0`,
     have p ∣ a^n,
       by rewrite H; apply dvd_mul_of_dvd_right this,
@@ -97,18 +97,17 @@ section
     from ne_of_gt (denom_pos q),
   have bnz : b ≠ (0 : ℚ),
     from assume H, `b ≠ 0` (of_int.inj H),
-  have bnnz : ((b : rat)^n ≠ 0),
-    from assume bneqz, bnz (eq_zero_of_pow_eq_zero bneqz),
-  have a^n /[rat] b^n = c,
-    using bnz, begin rewrite [*of_int_pow, -div_pow, -eq_num_div_denom, -H] end,
-  have (a^n : rat) = c *[rat] b^n,
-    from eq.symm (!mul_eq_of_eq_div bnnz this⁻¹),
+  have bnnz : (b : rat)^n ≠ 0,
+    from assume bneqz, bnz (_root_.eq_zero_of_pow_eq_zero bneqz),
+  have a^n /[rat] (b:rat)^n = c,
+    begin rewrite [*of_int_pow, -div_pow, -eq_num_div_denom, -H] end,
+  have (a^n : rat) = c * (b:rat)^n,
+    from eq.symm (!mul_eq_of_eq_div bnnz (eq.symm this)),
   have a^n = c * b^n,  -- int version
-    using this, by rewrite [-of_int_pow at this, -of_int_mul at this]; exact of_int.inj this,
+    by rewrite [-of_int_pow at this, -of_int_mul at this]; exact of_int.inj this,
   have (abs a)^n = abs c * (abs b)^n,
-    using this, by rewrite [-abs_pow, this, abs_mul, abs_pow],
+    by rewrite [-abs_pow, this, abs_mul, abs_pow],
   have H₁ : (nat_abs a)^n = nat_abs c * (nat_abs b)^n,
-    using this,
       begin apply int.of_nat.inj, rewrite [int.of_nat_mul, +int.of_nat_pow, +of_nat_nat_abs],
             exact this end,
   have H₂ : nat.coprime (nat_abs a) (nat_abs b),
@@ -118,11 +117,11 @@ section
       (suppose q = 0,
         by rewrite this)
       (suppose qne0 : q ≠ 0,
-        using H₁ H₂, begin
+        begin
           have ane0 : a ≠ 0, from
             suppose aeq0 : a = 0,
             have qeq0 : q = 0,
-              by rewrite [eq_num_div_denom, aeq0, of_int_zero, zero_div],
+              begin rewrite [eq_num_div_denom q, aeq0, of_int_zero, zero_div] end,
             show false,
               from qne0 qeq0,
           have nat_abs a ≠ 0, from
@@ -133,13 +132,13 @@ section
           show nat_abs b = 1, from (root_irrational npos (pos_of_ne_zero this) H₂ H₁)
         end),
   show b = 1,
-    using this, begin rewrite [-of_nat_nat_abs_of_nonneg (le_of_lt !denom_pos), this] end
+    begin rewrite [-of_nat_nat_abs_of_nonneg (le_of_lt !denom_pos), this] end
 
   theorem eq_num_pow_of_pow_eq {q : ℚ} {n : ℕ} {c : ℤ} (npos : n > 0) (H : q^n = c) :
     c = (num q)^n :=
   have denom q = 1,
     from denom_eq_one_of_pow_eq npos H,
-  have of_int c = of_int ((num q)^n), using this,
+  have of_int c = of_int ((num q)^n),
     by rewrite [-H, eq_num_div_denom q at {1}, this, of_int_one, div_one, of_int_pow],
   show c = (num q)^n , from of_int.inj this
 end
@@ -157,9 +156,9 @@ section
     (suppose p = 0,
       show false,
         by note H := (pos_of_prime primep); rewrite this at H; exfalso; exact !lt.irrefl H),
-  assert agtz : a > 0, from pos_of_ne_zero
+  have agtz : a > 0, from pos_of_ne_zero
     (suppose a = 0,
-      show false, using npos pnez, by revert peq; rewrite [this, zero_pow npos]; exact pnez),
+      show false, by revert peq; rewrite [this, zero_pow npos]; exact pnez),
   have n * mult p a = 1, from calc
     n * mult p a = mult p (a^n) : begin rewrite [mult_pow n agtz primep] end
              ... = mult p p     : peq
@@ -168,7 +167,7 @@ section
     from dvd_of_mul_right_eq this,
   have n = 1,
     from eq_one_of_dvd_one this,
-  show false, using this,
+  show false,
     by rewrite this at ngt1; exact !lt.irrefl ngt1
 
   open int rat
@@ -180,7 +179,7 @@ section
   have npos : n > 0, from lt.trans dec_trivial ngt1,
   suppose q^n = p,
   have p = (num q)^n, from eq_num_pow_of_pow_eq npos this,
-  have p = (nat_abs (num q))^n, using this numq,
+  have p = (nat_abs (num q))^n,
     by apply of_nat.inj; rewrite [this, of_nat_pow, of_nat_nat_abs_of_nonneg numq],
   show false, from not_eq_pow_of_prime _ ngt1 primep this
 end
@@ -198,21 +197,21 @@ section
   example {a b c : ℤ} (co : coprime a b) (apos : a > 0) (bpos : b > 0)
       (H : a * a = c * (b * b)) :
     b = 1 :=
-  assert H₁ : gcd (c * b) a = gcd c a,
+  have H₁ : gcd (c * b) a = gcd c a,
     from gcd_mul_right_cancel_of_coprime _ (coprime_swap co),
   have a * a = c * b * b,
     by rewrite -mul.assoc at H; apply H,
   have a / (gcd a b) = c * b / gcd (c * b) a,
     from div_gcd_eq_div_gcd this bpos apos,
-  have a = c * b / gcd c a, using this,
+  have a = c * b / gcd c a,
     by revert this; rewrite [↑coprime at co, co, int.div_one, H₁]; intros; assumption,
-  have a = b * (c / gcd c a), using this,
+  have a = b * (c / gcd c a),
     by revert this; rewrite [mul.comm, !int.mul_div_assoc !gcd_dvd_left]; intros; assumption,
   have b ∣ a,
     from dvd_of_mul_right_eq this⁻¹,
   have b ∣ gcd a b,
     from dvd_gcd this !dvd.refl,
-  have b ∣ 1, using this,
+  have b ∣ 1,
     by rewrite [↑coprime at co, co at this]; apply this,
   show b = 1,
     from eq_one_of_dvd_one (le_of_lt bpos) this

@@ -30,8 +30,8 @@ have x ∈ f x, from Hx⁻¹ ▸ this,
 show false, from `x ∉ f x` this
 
 theorem not_inj_on_pow {f : set X → X} (H : maps_to f (𝒫 A) A) : ¬ inj_on f (𝒫 A) :=
-let diag := f '[{x ∈ 𝒫 A | f x ∉ x}] in
-have diag ⊆ A, from image_subset_of_maps_to H (sep_subset _ _),
+let diag := f ' {x ∈ 𝒫 A | f x ∉ x} in
+have diag ⊆ A, from image_subset_of_maps_to_of_subset H (sep_subset _ _),
 assume H₁ : inj_on f (𝒫 A),
 have f diag ∈ diag, from by_contradiction
   (suppose f diag ∉ diag,
@@ -83,20 +83,21 @@ open set
   /- define a sequence of sets U -/
 
   definition U : ℕ → set X
-  | U 0       := A \ g '[B]
-  | U (n + 1) := g '[f '[U n]]
+  | U 0       := A \ (g ' B)
+  | U (n + 1) := g ' (f ' (U n))
 
   lemma U_subset_A : ∀ n, U n ⊆ A
   | 0       := show U 0 ⊆ A,
                  from diff_subset _ _
-  | (n + 1) := have f '[U n] ⊆ B,
-                 from image_subset_of_maps_to f_maps_to (U_subset_A n),
+  | (n + 1) := have f ' (U n) ⊆ B,
+                 from image_subset_of_maps_to_of_subset f_maps_to (U_subset_A n),
                show U (n + 1) ⊆ A,
-                 from image_subset_of_maps_to g_maps_to this
+                 from image_subset_of_maps_to_of_subset g_maps_to this
 
   lemma g_ginv_eq {a : X} (aA : a ∈ A) (anU  : a ∉ Union U) : g (ginv a) = a :=
-  have a ∈ g '[B], from by_contradiction
-    (suppose a ∉ g '[B],
+  using ginj,
+  have a ∈ g ' B, from by_contradiction
+    (suppose a ∉ g ' B,
       have a ∈ U 0, from and.intro aA this,
       have a ∈ Union U, from exists.intro 0 this,
       show false, from anU this),
@@ -111,18 +112,20 @@ open set
   noncomputable definition h x := if x ∈ Union U then f x else ginv x
 
   lemma h_maps_to : maps_to h A B :=
+  using f_maps_to dfltB,
   take a,
   suppose a ∈ A,
   show h a ∈ B, from
     by_cases
       (suppose a ∈ Union U,
-        by+ rewrite [↑h, if_pos this]; exact f_maps_to `a ∈ A`)
+        begin rewrite [↑h, if_pos this], exact f_maps_to `a ∈ A` end)
       (suppose a ∉ Union U,
-        by+ rewrite [↑h, if_neg this]; exact ginv_maps_to `a ∈ A`)
+        begin rewrite [↑h, if_neg this], exact ginv_maps_to `a ∈ A` end)
 
   /- h is injective -/
 
   lemma aux {a₁ a₂ : X} (H₁ : a₁ ∈ Union U) (a₂A : a₂ ∈ A) (heq : h a₁ = h a₂) : a₂ ∈ Union U :=
+  using ginj,
   obtain n (a₁Un : a₁ ∈ U n), from H₁,
   have ha₁eq : h a₁ = f a₁,
     from dif_pos H₁,
@@ -135,7 +138,7 @@ open set
              ... = g (h a₂)       : heq
              ... = g (ginv a₂)    : ha₂eq
              ... = a₂             : g_ginv_eq a₂A `a₂ ∉ Union U`,
-      have g (f a₁) ∈ g '[f '[U n]],
+      have g (f a₁) ∈ g ' (f ' (U n)),
         from mem_image_of_mem g (mem_image_of_mem f a₁Un),
       have a₂ ∈ U (n + 1),
         from `g (f a₁) = a₂` ▸ this,
@@ -178,20 +181,19 @@ open set
   lemma h_surj : surj_on h A B :=
   take b,
   suppose b ∈ B,
-  have g b ∈ A, from g_maps_to this,
+  using f_maps_to,
   by_cases
     (suppose g b ∈ Union U,
        obtain n (gbUn : g b ∈ U n), from this,
-      using ginj f_maps_to,
       begin
         cases n with n,
           {have g b ∈ U 0, from gbUn,
-            have g b ∉ g '[B], from and.right this,
-            have g b ∈ g '[B], from mem_image_of_mem g `b ∈ B`,
-            show b ∈ h '[A], from absurd `g b ∈ g '[B]` `g b ∉ g '[B]`},
+            have g b ∉ g ' B, from and.right this,
+            have g b ∈ g ' B, from mem_image_of_mem g `b ∈ B`,
+            show b ∈ h ' A,   from absurd `g b ∈ g ' B` `g b ∉ g ' B`},
         {have g b ∈ U (succ n), from gbUn,
-           have g b ∈ g '[f '[U n]], from this,
-           obtain b' [(b'fUn : b' ∈ f '[U n]) (geq : g b' = g b)], from this,
+           have g b ∈ g ' (f ' (U n)), from this,
+           obtain b' [(b'fUn : b' ∈ f ' (U n)) (geq : g b' = g b)], from this,
            obtain a [(aUn : a ∈ U n) (faeq : f a = b')], from b'fUn,
            have g (f a) = g b, by rewrite [faeq, geq],
            have a ∈ A, from U_subset_A n aUn,
@@ -199,12 +201,13 @@ open set
            have f a = b, from ginj `f a ∈ B` `b ∈ B` `g (f a) = g b`,
            have a ∈ Union U, from exists.intro n aUn,
            have h a = f a, from dif_pos this,
-           show b ∈ h '[A], from mem_image `a ∈ A` (`h a = f a` ⬝ `f a = b`)}
+           show b ∈ h ' A, from mem_image `a ∈ A` (`h a = f a` ⬝ `f a = b`)}
       end)
     (suppose g b ∉ Union U,
       have eq₁ : h (g b) = ginv (g b), from dif_neg this,
       have eq₂ : ginv (g b) = b, from ginv_g_eq `b ∈ B`,
-      show b ∈ h '[A], from mem_image `g b ∈ A` (eq₁ ⬝ eq₂))
+      have g b ∈ A, from g_maps_to `b ∈ B`,
+      show b ∈ h ' A, from mem_image `g b ∈ A` (eq₁ ⬝ eq₂))
 end
 end schroeder_bernstein
 
@@ -220,6 +223,7 @@ section
   parameter  (g_maps_to : maps_to g B A)
   parameter  (ginj : inj_on g B)
 
+  include g g_maps_to ginj
   theorem schroeder_bernstein : ∃ h, bij_on h A B :=
   by_cases
     (assume H : ∀ b, b ∉ B,

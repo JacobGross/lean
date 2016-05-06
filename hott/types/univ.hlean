@@ -10,7 +10,7 @@ Theorems about the universe
 
 import .bool .trunc .lift .pullback
 
-open is_trunc bool lift unit eq pi equiv equiv.ops sum sigma fiber prod pullback is_equiv sigma.ops
+open is_trunc bool lift unit eq pi equiv sum sigma fiber prod pullback is_equiv sigma.ops
      pointed
 namespace univ
 
@@ -39,21 +39,21 @@ namespace univ
 
   /- Properties which can be disproven for the universe -/
 
-  definition not_is_hset_type0 : ¬is_hset Type₀ :=
-  assume H : is_hset Type₀,
-  absurd !is_hset.elim eq_bnot_ne_idp
+  definition not_is_set_type0 : ¬is_set Type₀ :=
+  assume H : is_set Type₀,
+  absurd !is_set.elim eq_bnot_ne_idp
 
-  definition not_is_hset_type : ¬is_hset Type.{u} :=
-  assume H : is_hset Type,
-  absurd (is_trunc_is_embedding_closed lift star) not_is_hset_type0
+  definition not_is_set_type : ¬is_set Type.{u} :=
+  assume H : is_set Type,
+  absurd (is_trunc_is_embedding_closed lift !trunc_index.minus_one_le_succ) not_is_set_type0
 
   definition not_double_negation_elimination0 : ¬Π(A : Type₀), ¬¬A → A :=
   begin
     intro f,
     have u : ¬¬bool, by exact (λg, g tt),
-    let H1 := apdo f eq_bnot,
+    let H1 := apd f eq_bnot,
     note H2 := apo10 H1 u,
-    have p : eq_bnot ▸ u = u, from !is_hprop.elim,
+    have p : eq_bnot ▸ u = u, from !is_prop.elim,
     rewrite p at H2,
     note H3 := eq_of_pathover_ua H2, esimp at H3, --TODO: use apply ... at after #700
     exact absurd H3 (bnot_ne (f bool u)),
@@ -103,26 +103,26 @@ namespace univ
   end
 
   definition is_object_classifier (f : A → B)
-    : pullback_square (pointed_fiber f) (fiber f) f Pointed.carrier :=
+    : pullback_square (pointed_fiber f) (fiber f) f pType.carrier :=
   pullback_square.mk
     (λa, idp)
     (is_equiv_of_equiv_of_homotopy
       (calc
         A ≃ Σb, fiber f b                      : sigma_fiber_equiv
-      ... ≃ Σb (v : ΣX, X = fiber f b), v.1    : sigma_equiv_sigma_id
+      ... ≃ Σb (v : ΣX, X = fiber f b), v.1    : sigma_equiv_sigma_right
                                                    (λb, !sigma_equiv_of_is_contr_left)
-      ... ≃ Σb X (p : X = fiber f b), X        : sigma_equiv_sigma_id
+      ... ≃ Σb X (p : X = fiber f b), X        : sigma_equiv_sigma_right
                                                    (λb, !sigma_assoc_equiv)
-      ... ≃ Σb X (x : X), X = fiber f b        : sigma_equiv_sigma_id
-                                                   (λb, sigma_equiv_sigma_id
+      ... ≃ Σb X (x : X), X = fiber f b        : sigma_equiv_sigma_right
+                                                   (λb, sigma_equiv_sigma_right
                                                    (λX, !comm_equiv_nondep))
-      ... ≃ Σb (v : ΣX, X), v.1 = fiber f b    : sigma_equiv_sigma_id
-                                                   (λb, !sigma_assoc_equiv⁻¹)
-      ... ≃ Σb (Y : Type*), Y = fiber f b      : sigma_equiv_sigma_id
-                                     (λb, sigma_equiv_sigma (Pointed.sigma_char)⁻¹
+      ... ≃ Σb (v : ΣX, X), v.1 = fiber f b    : sigma_equiv_sigma_right
+                                                   (λb, !sigma_assoc_equiv⁻¹ᵉ)
+      ... ≃ Σb (Y : Type*), Y = fiber f b      : sigma_equiv_sigma_right
+                                     (λb, sigma_equiv_sigma (pType.sigma_char)⁻¹ᵉ
                                                             (λv, sigma.rec_on v (λx y, equiv.refl)))
       ... ≃ Σ(Y : Type*) b, Y = fiber f b      : sigma_comm_equiv
-      ... ≃ pullback Pointed.carrier (fiber f) : !pullback.sigma_char⁻¹ᵉ
+      ... ≃ pullback pType.carrier (fiber f) : !pullback.sigma_char⁻¹ᵉ
         )
       proof λb, idp qed)
 

@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 
 Author: Leonardo de Moura
 */
+#include "util/sexpr/option_declarations.h"
 #include "util/sstream.h"
 #include "kernel/abstract.h"
 #include "library/annotation.h"
@@ -26,7 +27,7 @@ Author: Leonardo de Moura
 #include "frontends/lean/decl_cmds.h"
 #include "frontends/lean/token_table.h"
 #include "frontends/lean/calc.h"
-#include "frontends/lean/begin_end_ext.h"
+#include "frontends/lean/begin_end_annotation.h"
 #include "frontends/lean/parser.h"
 #include "frontends/lean/util.h"
 #include "frontends/lean/tokens.h"
@@ -36,7 +37,17 @@ Author: Leonardo de Moura
 #include "frontends/lean/obtain_expr.h"
 #include "frontends/lean/nested_declaration.h"
 
+#ifndef LEAN_DEFAULT_PARSER_CHECKPOINT_HAVE
+#define LEAN_DEFAULT_PARSER_CHECKPOINT_HAVE true
+#endif
+
 namespace lean {
+static name * g_parser_checkpoint_have = nullptr;
+
+bool get_parser_checkpoint_have(options const & opts) {
+    return opts.get_bool(*g_parser_checkpoint_have, LEAN_DEFAULT_PARSER_CHECKPOINT_HAVE);
+}
+
 namespace notation {
 static expr parse_Type(parser & p, unsigned, expr const *, pos_info const & pos) {
     if (p.curr_is_token(get_llevel_curly_tk())) {
@@ -62,17 +73,6 @@ static expr parse_let_body(parser & p, pos_info const & pos) {
     }
 }
 
-static void parse_let_modifiers(parser & p, bool & is_visible) {
-    while (true) {
-        if (p.curr_is_token(get_visible_tk())) {
-            is_visible = true;
-            p.next();
-        } else {
-            break;
-        }
-    }
-}
-
 // Distribute mk_typed_expr over choice expression.
 // see issue #768
 static expr mk_typed_expr_distrib_choice(parser & p, expr const & type, expr const & value, pos_info const & pos) {
@@ -94,10 +94,8 @@ static expr parse_let(parser & p, pos_info const & pos) {
     } else {
         auto id_pos     = p.pos();
         name id         = p.check_atomic_id_next("invalid let declaration, identifier expected");
-        bool is_visible = false;
         optional<expr> type;
         expr value;
-        parse_let_modifiers(p, is_visible);
         if (p.curr_is_token(get_assign_tk())) {
             p.next();
             value = p.parse_expr();
@@ -128,7 +126,8 @@ static expr parse_let(parser & p, pos_info const & pos) {
         v = p.save_pos(mk_let_value(v), id_pos);
         p.add_local_expr(id, v);
         expr b = parse_let_body(p, pos);
-        return p.save_pos(mk_let(id, v, b), pos);
+        // TODO(Leo): use let-expression after we reimplement elaborator
+        return p.save_pos(mk_let_macro(id, v, b), pos);
     }
 }
 
@@ -147,25 +146,15 @@ static expr parse_by(parser & p, unsigned, expr const *, pos_info const & pos) {
     return p.mk_by(t, pos);
 }
 
-static expr parse_by_plus(parser & p, unsigned, expr const *, pos_info const & pos) {
-    p.next();
-    expr t = p.parse_tactic();
-    p.update_pos(t, pos);
-    return p.mk_by_plus(t, pos);
-}
-
 static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
-                                 name const & end_token, bool plus, bool nested = false) {
+                                 name const & end_token, bool nested = false) {
     if (!p.has_tactic_decls())
         throw parser_error("invalid 'begin-end' expression, tactic module has not been imported", start_pos);
     p.next();
-    optional<expr> pre_tac = get_begin_end_pre_tactic(p.env());
     buffer<expr> tacs;
     bool first = true;
 
-    auto add_tac = [&](expr tac, pos_info const & pos) {
-        if (pre_tac)
-            tac = p.mk_app({get_and_then_tac_fn(), *pre_tac, tac}, pos);
+    auto add_tac = [&](expr tac) {
         tac = mk_begin_end_element_annotation(tac);
         tacs.push_back(tac);
     };
@@ -184,10 +173,10 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
             }
             if (p.curr_is_token(get_begin_tk())) {
                 auto pos = p.pos();
-                tacs.push_back(parse_begin_end_core(p, pos, get_end_tk(), plus, true));
+                tacs.push_back(parse_begin_end_core(p, pos, get_end_tk(), true));
             } else if (p.curr_is_token(get_lcurly_tk())) {
                 auto pos = p.pos();
-                tacs.push_back(parse_begin_end_core(p, pos, get_rcurly_tk(), plus, true));
+                tacs.push_back(parse_begin_end_core(p, pos, get_rcurly_tk(), true));
             } else if (p.curr_is_token(end_token)) {
                 break;
             } else if (p.curr_is_token(get_assert_tk())) {
@@ -227,12 +216,12 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
                 expr assert_tac = p.save_pos(mk_assert_tactic_expr(id, A), pos);
                 tacs.push_back(mk_begin_end_element_annotation(assert_tac));
                 if (p.curr_is_token(get_bar_tk())) {
-                    expr local = p.save_pos(mk_local(id, A), id_pos);
+                    expr local = p.save_pos(mk_local(id, A, mk_rec_info(true)), id_pos);
                     expr t     = parse_local_equations(p, local);
                     t      = p.mk_app(get_rexact_tac_fn(), t, pos);
                     t      = p.save_pos(mk_begin_end_element_annotation(t), pos);
                     t      = p.save_pos(mk_begin_end_annotation(t), pos);
-                    add_tac(t, pos);
+                    add_tac(t);
                 } else {
                     p.check_token_next(get_comma_tk(), "invalid 'have' tactic, ',' expected");
                     if (p.curr_is_token(get_from_tk())) {
@@ -243,7 +232,7 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
                         t      = p.mk_app(get_exact_tac_fn(), t, pos);
                         t      = p.save_pos(mk_begin_end_element_annotation(t), pos);
                         t      = p.save_pos(mk_begin_end_annotation(t), pos);
-                        add_tac(t, pos);
+                        add_tac(t);
                     } else if (p.curr_is_token(get_proof_tk())) {
                         auto pos = p.pos();
                         p.next();
@@ -252,16 +241,15 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
                         t      = p.mk_app(get_rexact_tac_fn(), t, pos);
                         t      = p.save_pos(mk_begin_end_element_annotation(t), pos);
                         t      = p.save_pos(mk_begin_end_annotation(t), pos);
-                        add_tac(t, pos);
+                        add_tac(t);
                     } else if (p.curr_is_token(get_begin_tk())) {
                         auto pos = p.pos();
-                        tacs.push_back(parse_begin_end_core(p, pos, get_end_tk(), plus, true));
+                        tacs.push_back(parse_begin_end_core(p, pos, get_end_tk(), true));
                     } else if (p.curr_is_token(get_by_tk())) {
                         // parse: 'by' tactic
-                        auto pos = p.pos();
                         p.next();
                         expr t = p.parse_tactic();
-                        add_tac(t, pos);
+                        add_tac(t);
                     } else {
                         throw parser_error("invalid 'have' tactic, 'by', 'begin', 'proof', or 'from' expected", p.pos());
                     }
@@ -273,11 +261,10 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
                 auto pos = p.pos();
                 expr t = p.parse_tactic_expr_arg();
                 t      = p.mk_app(get_exact_tac_fn(), t, pos);
-                add_tac(t, pos);
+                add_tac(t);
             } else {
-                auto pos = p.pos();
                 expr t   = p.parse_tactic();
-                add_tac(t, pos);
+                add_tac(t);
             }
         }
     } catch (exception & ex) {
@@ -289,8 +276,6 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
     p.next();
     if (tacs.empty()) {
         expr tac = get_id_tac_fn();
-        if (pre_tac)
-            tac = p.mk_app({get_and_then_tac_fn(), *pre_tac, tac}, end_pos);
         tac = mk_begin_end_element_annotation(tac);
         tacs.push_back(tac);
     }
@@ -306,18 +291,12 @@ static expr parse_begin_end_core(parser & p, pos_info const & start_pos,
     r = p.save_pos(mk_begin_end_annotation(r), end_pos);
     if (nested)
         return r;
-    else if (plus)
-        return p.mk_by_plus(r, end_pos);
     else
         return p.mk_by(r, end_pos);
 }
 
 static expr parse_begin_end(parser & p, unsigned, expr const *, pos_info const & pos) {
-    return parse_begin_end_core(p, pos, get_end_tk(), false);
-}
-
-static expr parse_begin_end_plus(parser & p, unsigned, expr const *, pos_info const & pos) {
-    return parse_begin_end_core(p, pos, get_end_tk(), true);
+    return parse_begin_end_core(p, pos, get_end_tk());
 }
 
 static expr parse_tactic_expr(parser & p, unsigned, expr const *, pos_info const &) {
@@ -327,13 +306,13 @@ static expr parse_tactic_expr(parser & p, unsigned, expr const *, pos_info const
 static expr parse_proof_qed_core(parser & p, pos_info const & pos) {
     expr r = p.parse_expr();
     p.check_token_next(get_qed_tk(), "invalid proof-qed, 'qed' expected");
-    r      = p.mk_by_plus(p.mk_app(get_exact_tac_fn(), r, pos), pos);
+    r      = p.mk_by(p.mk_app(get_exact_tac_fn(), r, pos), pos);
     return r;
 }
 
-static expr parse_proof(parser & p, expr const & prop);
+static expr parse_proof(parser & p);
 
-static expr parse_using_expr(parser & p, expr const & prop, pos_info const & using_pos) {
+static expr parse_using_expr(parser & p, pos_info const & using_pos) {
     parser::local_scope scope(p);
     buffer<expr> locals;
     buffer<expr> new_locals;
@@ -341,9 +320,9 @@ static expr parse_using_expr(parser & p, expr const & prop, pos_info const & usi
         auto id_pos = p.pos();
         expr l      = p.parse_id();
         if (!is_local(l))
-            throw parser_error("invalid 'using' declaration for 'have', local expected", id_pos);
+            throw parser_error("invalid 'using' declaration, local expected", id_pos);
         expr new_l;
-        binder_info bi = local_info(l).update_contextual(true);
+        binder_info bi = local_info(l);
         if (p.is_local_variable_parameter(local_pp_name(l))) {
             expr new_type = p.save_pos(mk_as_is(mlocal_type(l)), id_pos);
             new_l = p.save_pos(mk_local(mlocal_name(l), local_pp_name(l), new_type, bi), id_pos);
@@ -355,7 +334,7 @@ static expr parse_using_expr(parser & p, expr const & prop, pos_info const & usi
         new_locals.push_back(new_l);
     }
     p.next(); // consume ','
-    expr pr = parse_proof(p, prop);
+    expr pr = p.parse_expr();
     unsigned i = locals.size();
     while (i > 0) {
         --i;
@@ -368,11 +347,10 @@ static expr parse_using_expr(parser & p, expr const & prop, pos_info const & usi
 }
 
 static expr parse_using(parser & p, unsigned, expr const *, pos_info const & pos) {
-    expr prop = p.save_pos(mk_expr_placeholder(), pos);
-    return parse_using_expr(p, prop, pos);
+    return parse_using_expr(p, pos);
 }
 
-static expr parse_proof(parser & p, expr const & prop) {
+static expr parse_proof(parser & p) {
     if (p.curr_is_token(get_from_tk())) {
         // parse: 'from' expr
         p.next();
@@ -383,44 +361,23 @@ static expr parse_proof(parser & p, expr const & prop) {
         return parse_proof_qed_core(p, pos);
     } else if (p.curr_is_token(get_begin_tk())) {
         auto pos = p.pos();
-        return parse_begin_end_core(p, pos, get_end_tk(), false);
-    } else if (p.curr_is_token(get_begin_plus_tk())) {
-        auto pos = p.pos();
-        return parse_begin_end_core(p, pos, get_end_tk(), true);
+        return parse_begin_end_core(p, pos, get_end_tk());
     } else if (p.curr_is_token(get_by_tk())) {
         auto pos = p.pos();
         return parse_by(p, 0, nullptr, pos);
-    } else if (p.curr_is_token(get_by_plus_tk())) {
-        auto pos = p.pos();
-        return parse_by_plus(p, 0, nullptr, pos);
-    } else if (p.curr_is_token(get_using_tk())) {
-        // parse: 'using' locals* ',' proof
-        auto using_pos = p.pos();
-        p.next();
-        return parse_using_expr(p, prop, using_pos);
     } else {
         throw parser_error("invalid expression, 'by', 'begin', 'proof', 'using' or 'from' expected", p.pos());
     }
 }
 
-static expr parse_have_core(parser & p, pos_info const & pos, optional<expr> const & prev_local, bool is_visible) {
+static expr parse_have_core(parser & p, pos_info const & pos, optional<expr> const & prev_local) {
     auto id_pos       = p.pos();
     name id;
     expr prop;
-    if (p.curr_is_token(get_visible_tk())) {
-        p.next();
-        is_visible    = true;
-        id            = get_this_tk();
-        prop          = p.parse_expr();
-    } else if (p.curr_is_identifier()) {
+    if (p.curr_is_identifier()) {
         id = p.get_name_val();
         p.next();
-        if (p.curr_is_token(get_visible_tk())) {
-            p.next();
-            p.check_token_next(get_colon_tk(), "invalid 'have/assert' declaration, ':' expected");
-            is_visible = true;
-            prop       = p.parse_expr();
-        } else if (p.curr_is_token(get_colon_tk())) {
+        if (p.curr_is_token(get_colon_tk())) {
             p.next();
             prop      = p.parse_expr();
         } else {
@@ -438,7 +395,7 @@ static expr parse_have_core(parser & p, pos_info const & pos, optional<expr> con
     }
     expr proof;
     if (p.curr_is_token(get_bar_tk()) && !prev_local) {
-        expr fn = p.save_pos(mk_local(id, prop), id_pos);
+        expr fn = p.save_pos(mk_local(id, prop, mk_rec_info(true)), id_pos);
         proof = parse_local_equations(p, fn);
     } else {
         p.check_token_next(get_comma_tk(), "invalid 'have/assert' declaration, ',' expected");
@@ -446,17 +403,16 @@ static expr parse_have_core(parser & p, pos_info const & pos, optional<expr> con
             parser::local_scope scope(p);
             p.add_local(*prev_local);
             auto proof_pos = p.pos();
-            proof = parse_proof(p, prop);
+            proof = parse_proof(p);
             proof = p.save_pos(Fun(*prev_local, proof), proof_pos);
             proof = p.save_pos(mk_app(proof, *prev_local), proof_pos);
         } else {
-            proof = parse_proof(p, prop);
+            proof = parse_proof(p);
         }
     }
     p.check_token_next(get_comma_tk(), "invalid 'have/assert' declaration, ',' expected");
     parser::local_scope scope(p);
-    binder_info bi = mk_contextual_info(is_visible);
-    expr l = p.save_pos(mk_local(id, prop, bi), pos);
+    expr l = p.save_pos(mk_local(id, prop), pos);
     p.add_local(l);
     expr body;
     if (p.curr_is_token(get_then_tk())) {
@@ -464,27 +420,22 @@ static expr parse_have_core(parser & p, pos_info const & pos, optional<expr> con
         p.next();
         if (p.curr_is_token(get_assert_tk())) {
             p.next();
-            is_visible = true;
         } else {
             p.check_token_next(get_have_tk(), "invalid 'then' declaration, 'have' or 'assert' expected");
-            is_visible = false;
         }
-        body  = parse_have_core(p, then_pos, some_expr(l), is_visible);
+        body  = parse_have_core(p, then_pos, some_expr(l));
     } else {
         body  = p.parse_expr();
     }
-    // remark: mk_contextual_info(false) informs the elaborator that prop should not occur inside metavariables.
     body = abstract(body, l);
-    expr r = p.save_pos(mk_have_annotation(p.save_pos(mk_lambda(id, prop, body, bi), pos)), pos);
+    if (get_parser_checkpoint_have(p.get_options()))
+        body = mk_checkpoint_annotation(body);
+    expr r = p.save_pos(mk_have_annotation(p.save_pos(mk_lambda(id, prop, body), pos)), pos);
     return p.mk_app(r, proof, pos);
 }
 
 static expr parse_have(parser & p, unsigned, expr const *, pos_info const & pos) {
-    return parse_have_core(p, pos, none_expr(), false);
-}
-
-static expr parse_assert(parser & p, unsigned, expr const *, pos_info const & pos) {
-    return parse_have_core(p, pos, none_expr(), true);
+    return parse_have_core(p, pos, none_expr());
 }
 
 static expr parse_suppose(parser & p, unsigned, expr const *, pos_info const & pos) {
@@ -521,11 +472,11 @@ static expr parse_suppose(parser & p, unsigned, expr const *, pos_info const & p
 static expr parse_show(parser & p, unsigned, expr const *, pos_info const & pos) {
     expr prop  = p.parse_expr();
     if (p.curr_is_token(get_bar_tk())) {
-        expr fn = p.save_pos(mk_local(get_this_tk(), prop), pos);
+        expr fn = p.save_pos(mk_local(get_this_tk(), prop, mk_rec_info(true)), pos);
         return parse_local_equations(p, fn);
     } else {
         p.check_token_next(get_comma_tk(), "invalid 'show' declaration, ',' expected");
-        expr proof = parse_proof(p, prop);
+        expr proof = parse_proof(p);
         expr b = p.save_pos(mk_lambda(get_this_tk(), prop, Var(0)), pos);
         expr r = p.mk_app(b, proof, pos);
         return p.save_pos(mk_show_annotation(r), pos);
@@ -563,7 +514,7 @@ static expr parse_suffices_to_show(parser & p, unsigned, expr const *, pos_info 
     {
         parser::local_scope scope(p);
         p.add_local(local);
-        body = parse_proof(p, prop);
+        body = parse_proof(p);
     }
     expr proof = p.save_pos(Fun(local, body), pos);
     p.check_token_next(get_comma_tk(), "invalid 'suffices' declaration, ',' expected");
@@ -611,18 +562,18 @@ static expr parse_obtain(parser & p, unsigned, expr const *, pos_info const & po
     // When from_term is not just a constant or local constant, we compile obtain as:
     //
     //   have H : _, from from_term,
-    //   (by+ exact (obtain ps, from H, goal_term)) H
+    //   (by exact (obtain ps, from H, goal_term)) H
     //
     // Motivation, we want "from_term" (and its type) to be elaborated before processing the
     // obtain-expression
     //
     if (is_constant(from_term) || is_local(from_term)) {
         expr r    = p.rec_save_pos(mk_obtain_expr(s, ps, from_term, goal_term), pos);
-        return p.mk_by_plus(p.mk_app(get_exact_tac_fn(), r, pos), pos);
+        return p.mk_by(p.mk_app(get_exact_tac_fn(), r, pos), pos);
     } else {
         expr H_type = p.save_pos(mk_expr_placeholder(), pos);
         expr body   = p.rec_save_pos(mk_obtain_expr(s, ps, mk_var(0), goal_term), pos);
-        body        = p.mk_by_plus(p.mk_app(get_exact_tac_fn(), body, pos), pos);
+        body        = p.mk_by(p.mk_app(get_exact_tac_fn(), body, pos), pos);
         expr fn     = p.rec_save_pos(mk_lambda(*H_obtain_from, H_type, body), pos);
         expr r      = p.mk_app(fn, from_term, pos);
         return p.save_pos(mk_have_annotation(r), pos);
@@ -754,9 +705,8 @@ parse_table init_nud_table() {
     parse_table r;
     r = r.add({transition("_", mk_ext_action(parse_placeholder))}, x0);
     r = r.add({transition("by", mk_ext_action_core(parse_by))}, x0);
-    r = r.add({transition("by+", mk_ext_action_core(parse_by_plus))}, x0);
     r = r.add({transition("have", mk_ext_action(parse_have))}, x0);
-    r = r.add({transition("assert", mk_ext_action(parse_assert))}, x0);
+    r = r.add({transition("assert", mk_ext_action(parse_have))}, x0);
     r = r.add({transition("suppose", mk_ext_action(parse_suppose))}, x0);
     r = r.add({transition("show", mk_ext_action(parse_show))}, x0);
     r = r.add({transition("suffices", mk_ext_action(parse_suffices_to_show))}, x0);
@@ -779,7 +729,6 @@ parse_table init_nud_table() {
     r = r.add({transition("@@", mk_ext_action(parse_partial_explicit_expr))}, x0);
     r = r.add({transition("!", mk_ext_action(parse_consume_args_expr))}, x0);
     r = r.add({transition("begin", mk_ext_action_core(parse_begin_end))}, x0);
-    r = r.add({transition("begin+", mk_ext_action_core(parse_begin_end_plus))}, x0);
     r = r.add({transition("proof", mk_ext_action(parse_proof_qed))}, x0);
     r = r.add({transition("using", mk_ext_action(parse_using))}, x0);
     r = r.add({transition("sorry", mk_ext_action(parse_sorry))}, x0);
@@ -814,6 +763,10 @@ void initialize_builtin_exprs() {
     *g_nud_table            = notation::init_nud_table();
     g_led_table             = new parse_table();
     *g_led_table            = notation::init_led_table();
+
+    g_parser_checkpoint_have = new name{"parser", "checkpoint_have"};
+    register_bool_option(*g_parser_checkpoint_have, LEAN_DEFAULT_PARSER_CHECKPOINT_HAVE,
+                         "(parser) introduces a checkpoint on have-expressions, checkpoints are like Prolog-cuts");
 }
 
 void finalize_builtin_exprs() {
@@ -821,5 +774,6 @@ void finalize_builtin_exprs() {
     delete g_nud_table;
     delete notation::H_obtain_from;
     delete notation::g_not;
+    delete g_parser_checkpoint_have;
 }
 }

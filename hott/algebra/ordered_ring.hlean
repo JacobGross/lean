@@ -201,7 +201,7 @@ structure ordered_ring [class] (A : Type)
 theorem ordered_ring.mul_le_mul_of_nonneg_left [s : ordered_ring A] {a b c : A}
         (Hab : a ≤ b) (Hc : 0 ≤ c) : c * a ≤ c * b :=
 have H1 : 0 ≤ b - a, from iff.elim_right !sub_nonneg_iff_le Hab,
-assert H2 : 0 ≤ c * (b - a), from ordered_ring.mul_nonneg _ _ Hc H1,
+have H2 : 0 ≤ c * (b - a), from ordered_ring.mul_nonneg _ _ Hc H1,
 begin
   rewrite mul_sub_left_distrib at H2,
   exact (iff.mp !sub_nonneg_iff_le H2)
@@ -210,7 +210,7 @@ end
 theorem ordered_ring.mul_le_mul_of_nonneg_right [s : ordered_ring A] {a b c : A}
         (Hab : a ≤ b) (Hc : 0 ≤ c) : a * c ≤ b * c  :=
 have H1 : 0 ≤ b - a, from iff.elim_right !sub_nonneg_iff_le Hab,
-assert H2 : 0 ≤ (b - a) * c, from ordered_ring.mul_nonneg _ _ H1 Hc,
+have H2 : 0 ≤ (b - a) * c, from ordered_ring.mul_nonneg _ _ H1 Hc,
 begin
   rewrite mul_sub_right_distrib at H2,
   exact (iff.mp !sub_nonneg_iff_le H2)
@@ -219,7 +219,7 @@ end
 theorem ordered_ring.mul_lt_mul_of_pos_left [s : ordered_ring A] {a b c : A}
        (Hab : a < b) (Hc : 0 < c) : c * a < c * b :=
 have H1 : 0 < b - a, from iff.elim_right !sub_pos_iff_lt Hab,
-assert H2 : 0 < c * (b - a), from ordered_ring.mul_pos _ _ Hc H1,
+have H2 : 0 < c * (b - a), from ordered_ring.mul_pos _ _ Hc H1,
 begin
   rewrite mul_sub_left_distrib at H2,
   exact (iff.mp !sub_pos_iff_lt H2)
@@ -228,15 +228,13 @@ end
 theorem ordered_ring.mul_lt_mul_of_pos_right [s : ordered_ring A] {a b c : A}
        (Hab : a < b) (Hc : 0 < c) : a * c < b * c :=
 have H1 : 0 < b - a, from iff.elim_right !sub_pos_iff_lt Hab,
-assert H2 : 0 < (b - a) * c, from ordered_ring.mul_pos _ _ H1 Hc,
+have H2 : 0 < (b - a) * c, from ordered_ring.mul_pos _ _ H1 Hc,
 begin
   rewrite mul_sub_right_distrib at H2,
   exact (iff.mp !sub_pos_iff_lt H2)
 end
 
-definition ordered_ring.to_ordered_semiring [trans_instance] [reducible]
-    [s : ordered_ring A] :
-  ordered_semiring A :=
+definition ordered_ring.to_ordered_semiring [trans_instance] [s : ordered_ring A] : ordered_semiring A :=
 ⦃ ordered_semiring, s,
   mul_zero                   := mul_zero,
   zero_mul                   := zero_mul,
@@ -256,7 +254,7 @@ section
 
   theorem mul_le_mul_of_nonpos_left (H : b ≤ a) (Hc : c ≤ 0) : c * a ≤ c * b :=
   have Hc' : -c ≥ 0, from iff.mpr !neg_nonneg_iff_nonpos Hc,
-  assert H1 : -c * b ≤ -c * a, from mul_le_mul_of_nonneg_left H Hc',
+  have H1 : -c * b ≤ -c * a, from mul_le_mul_of_nonneg_left H Hc',
   have H2 : -(c * b) ≤ -(c * a),
     begin
       rewrite [-*neg_mul_eq_neg_mul at H1],
@@ -266,7 +264,7 @@ section
 
   theorem mul_le_mul_of_nonpos_right (H : b ≤ a) (Hc : c ≤ 0) : a * c ≤ b * c :=
   have Hc' : -c ≥ 0, from iff.mpr !neg_nonneg_iff_nonpos Hc,
-  assert H1 : b * -c ≤ a * -c, from mul_le_mul_of_nonneg_right H Hc',
+  have H1 : b * -c ≤ a * -c, from mul_le_mul_of_nonneg_right H Hc',
   have H2 : -(b * c) ≤ -(a * c),
     begin
       rewrite [-*neg_mul_eq_mul_neg at H1],
@@ -283,7 +281,7 @@ section
 
   theorem mul_lt_mul_of_neg_left (H : b < a) (Hc : c < 0) : c * a < c * b :=
   have Hc' : -c > 0, from iff.mpr !neg_pos_iff_neg Hc,
-  assert H1 : -c * b < -c * a, from mul_lt_mul_of_pos_left H Hc',
+  have H1 : -c * b < -c * a, from mul_lt_mul_of_pos_left H Hc',
   have H2 : -(c * b) < -(c * a),
     begin
       rewrite [-*neg_mul_eq_neg_mul at H1],
@@ -293,7 +291,7 @@ section
 
   theorem mul_lt_mul_of_neg_right (H : b < a) (Hc : c < 0) : a * c < b * c :=
   have Hc' : -c > 0, from iff.mpr !neg_pos_iff_neg Hc,
-  assert H1 : b * -c < a * -c, from mul_lt_mul_of_pos_right H Hc',
+  have H1 : b * -c < a * -c, from mul_lt_mul_of_pos_right H Hc',
   have H2 : -(b * c) < -(a * c),
     begin
       rewrite [-*neg_mul_eq_mul_neg at H1],
@@ -316,9 +314,7 @@ structure linear_ordered_ring [class] (A : Type)
     extends ordered_ring A, linear_strong_order_pair A :=
   (zero_lt_one : lt zero one)
 
-definition linear_ordered_ring.to_linear_ordered_semiring [trans_instance] [reducible]
-    [s : linear_ordered_ring A] :
-  linear_ordered_semiring A :=
+definition linear_ordered_ring.to_linear_ordered_semiring [trans_instance] [s : linear_ordered_ring A] : linear_ordered_semiring A :=
 ⦃ linear_ordered_semiring, s,
   mul_zero                   := mul_zero,
   zero_mul                   := zero_mul,
@@ -370,7 +366,7 @@ lt.by_cases
         end))
 
 -- Linearity implies no zero divisors. Doesn't need commutativity.
-definition linear_ordered_comm_ring.to_integral_domain [trans_instance] [reducible]
+definition linear_ordered_comm_ring.to_integral_domain [trans_instance]
     [s: linear_ordered_comm_ring A] : integral_domain A :=
 ⦃ integral_domain, s,
   eq_zero_sum_eq_zero_of_mul_eq_zero :=

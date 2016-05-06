@@ -40,17 +40,15 @@ void consume_until_end(parser & p) {
 }
 
 void check_command_period_or_eof(parser const & p) {
-    if (!p.curr_is_command() && !p.curr_is_eof() && !p.curr_is_token(get_period_tk()) &&
-        !p.curr_is_script_block())
-        throw parser_error("unexpected token, '.', command, Lua script, or end-of-file expected", p.pos());
+    if (!p.curr_is_command() && !p.curr_is_eof() && !p.curr_is_token(get_period_tk()))
+        throw parser_error("unexpected token, '.', command, or end-of-file expected", p.pos());
 }
 
 void check_command_period_open_binder_or_eof(parser const & p) {
     if (!p.curr_is_command() && !p.curr_is_eof() && !p.curr_is_token(get_period_tk()) &&
-        !p.curr_is_script_block() &&
         !p.curr_is_token(get_lparen_tk()) && !p.curr_is_token(get_lbracket_tk()) &&
         !p.curr_is_token(get_lcurly_tk()) && !p.curr_is_token(get_ldcurly_tk()))
-        throw parser_error("unexpected token, '(', '{', '[', '⦃', '.', command, Lua script, or end-of-file expected", p.pos());
+        throw parser_error("unexpected token, '(', '{', '[', '⦃', '.', command, or end-of-file expected", p.pos());
 }
 
 void check_atomic(name const & n) {
@@ -119,7 +117,12 @@ static void collect_locals_ignoring_tactics(expr const & e, collected_locals & l
 }
 
 void collect_annonymous_inst_implicit(parser const & p, collected_locals & ls) {
-    for (auto const & entry : p.get_local_entries()) {
+    buffer<pair<name, expr>> entries;
+    to_buffer(p.get_local_entries(), entries);
+    unsigned i = entries.size();
+    while (i > 0) {
+        --i;
+        auto const & entry = entries[i];
         if (is_local(entry.second) && !ls.contains(entry.second) && local_info(entry.second).is_inst_implicit() &&
             // remark: remove the following condition condition, if we want to auto inclusion also for non anonymous ones.
             p.is_anonymous_inst_name(entry.first)) {
@@ -366,11 +369,11 @@ public:
             });
     }
 
-    virtual expr visit_sort(expr const & e) {
+    virtual expr visit_sort(expr const & e) override {
         return update_sort(e, apply(sort_level(e)));
     }
 
-    virtual expr visit_constant(expr const & e) {
+    virtual expr visit_constant(expr const & e) override {
         levels ls = map(const_levels(e), [&](level const & l) { return apply(l); });
         return update_constant(e, ls);
     }
@@ -455,7 +458,7 @@ expr postprocess(environment const & env, expr const & e) {
 // That is, it replaces every (choice a_0 ... a_n), where a_0 is a numeral, with
 // a_0.
 class elim_choice_num_fn : public replace_visitor {
-    virtual expr visit_macro(expr const & m) {
+    virtual expr visit_macro(expr const & m) override {
         if (is_choice(m)) {
             expr const & e = macro_arg(m, 0);
             if (to_num(e)) {

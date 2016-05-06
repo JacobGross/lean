@@ -118,8 +118,8 @@ static expr read_macro_definition(deserializer & d, unsigned num, expr const * a
 
 serializer & operator<<(serializer & s, binder_info const & i) {
     unsigned w =
-        (i.is_implicit() ?        8 : 0) +
-        (i.is_contextual() ?      4 : 0) +
+        (i.is_rec() ?             8 : 0) +
+        (i.is_implicit() ?        4 : 0) +
         (i.is_strict_implicit() ? 2 : 0) +
         (i.is_inst_implicit() ?   1 : 0);
     s.write_char(w);
@@ -128,11 +128,11 @@ serializer & operator<<(serializer & s, binder_info const & i) {
 
 static binder_info read_binder_info(deserializer & d) {
     unsigned w = d.read_char();
-    bool imp   = (w & 8) != 0;
-    bool ctx   = (w & 4) != 0;
-    bool s_imp = (w & 2) != 0;
-    bool i_imp = (w & 1) != 0;
-    return binder_info(imp, ctx, s_imp, i_imp);
+    bool rec   = (w & 8) != 0;
+    bool imp   = (w & 4)  != 0;
+    bool s_imp = (w & 2)  != 0;
+    bool i_imp = (w & 1)  != 0;
+    return binder_info(imp, s_imp, i_imp, rec);
 }
 
 static name * g_binder_name = nullptr;
@@ -181,6 +181,10 @@ class expr_serializer : public object_serializer<expr, expr_hash_alloc, expr_eqp
                     lean_assert(!binding_name(a).is_anonymous());
                     write_binder_name(s, binding_name(a));
                     s << binding_info(a); write_core(binding_domain(a)); write_core(binding_body(a));
+                    break;
+                case expr_kind::Let:
+                    s << let_name(a);
+                    write_core(let_type(a)); write_core(let_value(a)); write_core(let_body(a));
                     break;
                 case expr_kind::Meta:
                     lean_assert(!mlocal_name(a).is_anonymous());
@@ -239,6 +243,12 @@ public:
                 }
                 case expr_kind::Lambda: case expr_kind::Pi:
                     return read_binding(k);
+                case expr_kind::Let: {
+                    name n = read_name(d);
+                    expr t = read();
+                    expr v = read();
+                    return mk_let(n, t, v, read());
+                }
                 case expr_kind::Meta: {
                     name n = read_name(d);
                     return mk_metavar(n, read());

@@ -7,7 +7,7 @@ Theorems about the integers specific to HoTT
 -/
 
 import .basic types.eq arity algebra.bundled
-open core eq is_equiv equiv equiv.ops algebra is_trunc
+open core eq is_equiv equiv algebra is_trunc
 open nat (hiding pred)
 
 namespace int
@@ -16,6 +16,8 @@ namespace int
   open algebra
   definition group_integers : Group :=
   Group.mk ℤ (group_of_add_group _)
+
+  notation `gℤ` := group_integers
   end
 
   definition is_equiv_succ [instance] : is_equiv succ :=
@@ -92,7 +94,7 @@ namespace eq
     (λn IH, idp)
     (λn IH, calc
       power p (-succ n) ⬝ p
-            = (power p (-int.of_nat n) ⬝ p⁻¹) ⬝ p : by rewrite [↑power,-rec_nat_on_neg]
+            = (power p (-int.of_nat n) ⬝ p⁻¹) ⬝ p : by krewrite [↑power,rec_nat_on_neg]
         ... = power p (-int.of_nat n) : inv_con_cancel_right
         ... = power p (succ (-succ n)) : by rewrite -succ_neg_succ)
 
@@ -104,7 +106,7 @@ namespace eq
         ... = power p (pred (succ n))   : by rewrite pred_nat_succ)
     (λn IH, calc
       power p (-int.of_nat (succ n)) ⬝ p⁻¹
-            = power p (-int.of_nat (succ (succ n))) : by rewrite [↑power,-rec_nat_on_neg]
+            = power p (-int.of_nat (succ (succ n))) : by krewrite [↑power,*rec_nat_on_neg]
         ... = power p (pred (-succ n)) : by rewrite -neg_succ)
 
   definition con_power : p ⬝ power p b = power p (succ b) :=
@@ -135,7 +137,7 @@ namespace eq
       ... = (p⁻¹ ⬝ power p (-int.of_nat n)) ⬝ p⁻¹ : con.assoc
       ... = power p (pred (-int.of_nat n)) ⬝ p⁻¹ : by rewrite IH
       ... = power p (-int.of_nat (succ n)) ⬝ p⁻¹ : by rewrite -neg_succ
-      ... = power p (-succ (succ n)) : by rewrite [↑power,-rec_nat_on_neg]
+      ... = power p (-succ (succ n)) : by krewrite [↑power,*rec_nat_on_neg]
       ... = power p (pred (-succ n)) : by rewrite -neg_succ)
 
   definition power_con_power : Π(b : ℤ), power p b ⬝ power p c = power p (b + c) :=

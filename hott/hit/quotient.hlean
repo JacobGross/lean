@@ -14,9 +14,9 @@ See also .set_quotient
   * eq_of_rel : Π{a a' : A}, R a a' → class_of a = class_of a' (R explicit)
 -/
 
-import arity cubical.squareover types.arrow cubical.pathover2
+import arity cubical.squareover types.arrow cubical.pathover2 types.pointed
 
-open eq equiv sigma sigma.ops equiv.ops pi is_trunc
+open eq equiv sigma sigma.ops pi is_trunc pointed
 
 namespace quotient
 
@@ -35,15 +35,15 @@ namespace quotient
     : ap (quotient.elim Pc Pp) (eq_of_rel R H) = Pp H :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant (eq_of_rel R H)),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑quotient.elim,rec_eq_of_rel],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑quotient.elim,rec_eq_of_rel],
   end
 
-  protected definition rec_hprop {A : Type} {R : A → A → Type} {P : quotient R → Type}
-    [H : Πx, is_hprop (P x)] (Pc : Π(a : A), P (class_of R a)) (x : quotient R) : P x :=
-  quotient.rec Pc (λa a' H, !is_hprop.elimo) x
+  protected definition rec_prop {A : Type} {R : A → A → Type} {P : quotient R → Type}
+    [H : Πx, is_prop (P x)] (Pc : Π(a : A), P (class_of R a)) (x : quotient R) : P x :=
+  quotient.rec Pc (λa a' H, !is_prop.elimo) x
 
-  protected definition elim_hprop {P : Type} [H : is_hprop P] (Pc : A → P) (x : quotient R) : P :=
-  quotient.elim Pc (λa a' H, !is_hprop.elim) x
+  protected definition elim_prop {P : Type} [H : is_prop P] (Pc : A → P) (x : quotient R) : P :=
+  quotient.elim Pc (λa a' H, !is_prop.elim) x
 
   protected definition elim_type (Pc : A → Type)
     (Pp : Π⦃a a' : A⦄ (H : R a a'), Pc a ≃ Pc a') : quotient R → Type :=
@@ -89,7 +89,7 @@ namespace quotient
       (Σ(f : Π(a : A), C (class_of R a)),  Π⦃a a' : A⦄ (H : R a a'), f a =[eq_of_rel R H] f a') :=
     begin
       fapply equiv.MK,
-      { intro f, exact ⟨λa, f (class_of R a), λa a' H, apdo f (eq_of_rel R H)⟩},
+      { intro f, exact ⟨λa, f (class_of R a), λa a' H, apd f (eq_of_rel R H)⟩},
       { intro v x, induction v with i p, induction x,
           exact (i a),
           exact (p H)},
@@ -99,6 +99,9 @@ namespace quotient
         apply eq_pathover_dep, esimp, rewrite rec_eq_of_rel, exact hrflo},
     end
   end
+
+  definition pquotient [constructor] {A : Type*} (R : A → A → Type) : Type* :=
+  pType.mk (quotient R) (class_of R pt)
 
   /- the flattening lemma -/
 
@@ -134,7 +137,7 @@ namespace quotient
       induction q,
       { exact Qpt p},
       { apply pi_pathover_left', esimp, intro c,
-        refine _ ⬝op apd Qpt (elim_type_eq_of_rel C f H c)⁻¹ᵖ,
+        refine _ ⬝op apdt Qpt (elim_type_eq_of_rel C f H c)⁻¹ᵖ,
         refine _ ⬝op (tr_compose Q Ppt _ _)⁻¹ ,
         rewrite ap_inv,
         refine pathover_cancel_right _ !tr_pathover⁻¹ᵒ,
@@ -163,7 +166,7 @@ namespace quotient
       (c : C a) : ap (elim @Qpt Qeq) (Peq r c) = Qeq r c :=
     begin
       refine !ap_dpair_eq_dpair ⬝ _,
-      rewrite [apo011_eq_apo11_apdo, rec_eq_of_rel, ▸*, apo011_arrow_pathover_constant_right,
+      rewrite [apo011_eq_apo11_apd, rec_eq_of_rel, ▸*, apo011_arrow_pathover_constant_right,
                ↑elim_type_eq_of_rel', to_right_inv !pathover_equiv_tr_eq, ap_inv],
       apply inv_con_cancel_right
     end

@@ -20,9 +20,8 @@ namespace iso
     (left_inverse  : inverse ∘ f = id)
     (right_inverse : f ∘ inverse = id)
 
-  attribute is_iso.inverse [quasireducible]
+  attribute is_iso.inverse [reducible]
 
-  attribute is_iso [multiple_instances]
   open split_mono split_epi is_iso
   abbreviation retraction_of [unfold 6] := @split_mono.retraction_of
   abbreviation retraction_comp [unfold 6] := @split_mono.retraction_comp
@@ -39,11 +38,11 @@ namespace iso
   variables {a b c : ob} {g : b ⟶ c} {f : a ⟶ b} {h : b ⟶ a}
   include C
 
-  definition split_mono_of_is_iso [constructor] [instance] [priority 300] [reducible]
+  definition split_mono_of_is_iso [constructor] [instance] [priority 300]
     (f : a ⟶ b) [H : is_iso f] : split_mono f :=
   split_mono.mk !left_inverse
 
-  definition split_epi_of_is_iso [constructor] [instance] [priority 300] [reducible]
+  definition split_epi_of_is_iso [constructor] [instance] [priority 300]
     (f : a ⟶ b) [H : is_iso f] : split_epi f :=
   split_epi.mk !right_inverse
 
@@ -79,7 +78,7 @@ namespace iso
   is_iso.mk _ ((retraction_eq_section f) ▸ (retraction_comp f)) (comp_section f)
 
   theorem inverse_unique (H H' : is_iso f) : @inverse _ _ _ _ f H = @inverse _ _ _ _ f H' :=
-  inverse_eq_left !left_inverse
+  @inverse_eq_left _ _ _ _ _ _ H !left_inverse
 
   theorem inverse_involutive (f : a ⟶ b) [H : is_iso f] [H : is_iso (f⁻¹)]
     : (f⁻¹)⁻¹ = f :=
@@ -114,16 +113,16 @@ namespace iso
     [Hf : is_iso f] [Hg : is_iso g] : is_iso (g ∘ f) :=
   !is_iso_of_split_epi_of_split_mono
 
-  theorem is_hprop_is_iso [instance] (f : hom a b) : is_hprop (is_iso f) :=
+  theorem is_prop_is_iso [instance] (f : hom a b) : is_prop (is_iso f) :=
   begin
-    apply is_hprop.mk, intro H H',
+    apply is_prop.mk, intro H H',
     cases H with g li ri, cases H' with g' li' ri',
     fapply (apd0111 (@is_iso.mk ob C a b f)),
       apply left_inverse_eq_right_inverse,
         apply li,
         apply ri',
-      apply is_hprop.elim,
-      apply is_hprop.elim,
+      apply is_prop.elim,
+      apply is_prop.elim,
   end
 end iso open iso
 
@@ -175,7 +174,7 @@ namespace iso
 
   definition iso_mk_eq {f f' : a ⟶ b} [H : is_iso f] [H' : is_iso f'] (p : f = f')
       : iso.mk f _ = iso.mk f' _ :=
-  apd011 iso.mk p !is_hprop.elim
+  apd011 iso.mk p !is_prop.elim
 
   variable {C}
   definition iso_eq {f f' : a ≅ b} (p : to_hom f = to_hom f') : f = f' :=
@@ -194,7 +193,7 @@ namespace iso
   end
 
   -- The type of isomorphisms between two objects is a set
-  definition is_hset_iso [instance] : is_hset (a ≅ b) :=
+  definition is_set_iso [instance] : is_set (a ≅ b) :=
   begin
     apply is_trunc_is_equiv_closed,
       apply equiv.to_is_equiv (!iso.sigma_char),
@@ -379,8 +378,8 @@ namespace iso
 
   variables (q)
   theorem comp.cancel_left  (H : q ∘ p = q ∘ p') : p = p' :=
-  by rewrite [-inverse_comp_cancel_left q, H, inverse_comp_cancel_left q]
+  by rewrite [-inverse_comp_cancel_left q p, H, inverse_comp_cancel_left q]
   theorem comp.cancel_right (H : r ∘ q = r' ∘ q) : r = r' :=
-  by rewrite [-comp_inverse_cancel_right _ q, H, comp_inverse_cancel_right _ q]
+  by rewrite [-comp_inverse_cancel_right r q, H, comp_inverse_cancel_right _ q]
   end
 end iso

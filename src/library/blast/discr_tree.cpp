@@ -8,6 +8,7 @@ Author: Leonardo de Moura
 #include <vector>
 #include "util/rb_map.h"
 #include "util/memory_pool.h"
+#include "library/annotation.h"
 #include "library/blast/trace.h"
 #include "library/blast/blast.h"
 #include "library/blast/discr_tree.h"
@@ -171,7 +172,7 @@ auto discr_tree::insert_erase_app(node && n, bool is_root, expr const & e, buffe
     if (is_constant(fn) || is_local(fn)) {
         if (!is_root)
             todo.push_back(mk_pair(*g_delimiter, false));
-        fun_info info = get_fun_info(fn);
+        fun_info info = get_fun_info(fn, args.size());
         buffer<param_info> pinfos;
         to_buffer(info.get_params_info(), pinfos);
         lean_assert(pinfos.size() == args.size());
@@ -234,6 +235,7 @@ auto discr_tree::insert_erase(node && n, bool is_root, buffer<pair<expr, bool>> 
         lean_unreachable();
     case expr_kind::Sort: case expr_kind::Lambda:
     case expr_kind::Pi:   case expr_kind::Macro:
+    case expr_kind::Let:
         // unsupported
         return insert_erase_atom(std::move(n), edge(edge_kind::Unsupported), todo, v, skip, ins);
     }
@@ -281,7 +283,7 @@ bool discr_tree::find_app(node const & n, expr const & e, list<pair<expr, bool>>
     buffer<expr> args;
     expr const & f = get_app_args(e, args);
     if (is_constant(f) || is_local(f)) {
-        fun_info info = get_fun_info(f);
+        fun_info info = get_fun_info(f, args.size());
         buffer<param_info> pinfos;
         to_buffer(info.get_params_info(), pinfos);
         lean_assert(pinfos.size() == args.size());
@@ -330,6 +332,7 @@ bool discr_tree::find(node const & n, list<pair<expr, bool>> todo, std::function
         lean_unreachable();
     case expr_kind::Sort: case expr_kind::Lambda:
     case expr_kind::Pi:   case expr_kind::Macro:
+    case expr_kind::Let:
         // unsupported
         return find_atom(n, edge(edge_kind::Unsupported), tail(todo), fn);
     }
@@ -398,7 +401,7 @@ void discr_tree::node::trace(optional<edge> const & e, unsigned depth, bool disj
         first = true;
         m_ptr->m_values.for_each([&](expr const & v) {
                 if (first) first = false; else tout() << ", ";
-                tout() << ppb(v);
+                tout() << v;
             });
         tout() << "}";
     }

@@ -10,7 +10,6 @@ Author: Leonardo de Moura
 #include <vector>
 #include <util/utf8.h>
 #include "util/interrupt.h"
-#include "util/script_exception.h"
 #include "util/sstream.h"
 #include "util/flet.h"
 #include "util/lean_path.h"
@@ -41,13 +40,13 @@ Author: Leonardo de Moura
 #include "library/flycheck.h"
 #include "library/pp_options.h"
 #include "library/noncomputable.h"
-#include "library/error_handling/error_handling.h"
+#include "library/error_handling.h"
+#include "library/type_context.h"
 #include "library/tactic/expr_to_tactic.h"
 #include "library/tactic/location.h"
 #include "frontends/lean/tokens.h"
 #include "frontends/lean/parser.h"
 #include "frontends/lean/util.h"
-#include "frontends/lean/parser_bindings.h"
 #include "frontends/lean/notation_cmd.h"
 #include "frontends/lean/elaborator.h"
 #include "frontends/lean/info_annotation.h"
@@ -131,7 +130,7 @@ parser::parser(environment const & env, io_state const & ios,
                bool use_exceptions, unsigned num_threads,
                snapshot const * s, snapshot_vector * sv, info_manager * im,
                keep_theorem_mode tmode):
-    m_env(env), m_ios(ios), m_ngen(*g_tmp_prefix),
+    m_env(env), m_ios(ios),
     m_verbose(true), m_use_exceptions(use_exceptions),
     m_scanner(strm, strm_name, s ? s->m_line : 1),
     m_base_dir(base_dir),
@@ -147,7 +146,6 @@ parser::parser(environment const & env, io_state const & ios,
     m_has_params = false;
     m_keep_theorem_mode = tmode;
     if (s) {
-        m_ngen               = s->m_ngen;
         m_local_level_decls  = s->m_lds;
         m_local_decls        = s->m_eds;
         m_level_variables    = s->m_lvars;
@@ -184,7 +182,7 @@ void parser::scan() {
             if (curr_is_identifier()) {
                 name const & id = get_name_val();
                 if (p.second <= m_info_at_col && m_info_at_col < p.second + id.utf8_size()) {
-                    print_lean_info_header(regular_stream().get_stream());
+                    print_lean_info_header(m_ios.get_regular_stream());
                     bool ok = true;
                     try {
                         bool show_value = false;
@@ -193,26 +191,26 @@ void parser::scan() {
                         ok = false;
                     }
                     if (!ok)
-                        regular_stream() << "unknown identifier '" << id << "'\n";
-                    print_lean_info_footer(regular_stream().get_stream());
+                        m_ios.get_regular_stream() << "unknown identifier '" << id << "'\n";
+                    print_lean_info_footer(m_ios.get_regular_stream());
                     m_info_at = false;
                 }
             } else if (curr_is_keyword()) {
                 name const & tk = get_token_info().token();
                 if (p.second <= m_info_at_col && m_info_at_col < p.second + tk.utf8_size()) {
-                    print_lean_info_header(regular_stream().get_stream());
+                    print_lean_info_header(m_ios.get_regular_stream());
                     try {
                         print_token_info(*this, tk);
                     } catch (exception &) {}
-                    print_lean_info_footer(regular_stream().get_stream());
+                    print_lean_info_footer(m_ios.get_regular_stream());
                     m_info_at = false;
                 }
             } else if (curr_is_command()) {
                 name const & tk = get_token_info().token();
                 if (p.second <= m_info_at_col && m_info_at_col < p.second + tk.utf8_size()) {
-                    print_lean_info_header(regular_stream().get_stream());
-                    regular_stream() << "'" << tk << "' is a command\n";
-                    print_lean_info_footer(regular_stream().get_stream());
+                    print_lean_info_header(m_ios.get_regular_stream());
+                    m_ios.get_regular_stream() << "'" << tk << "' is a command\n";
+                    print_lean_info_footer(m_ios.get_regular_stream());
                     m_info_at = false;
                 }
             }
@@ -277,9 +275,9 @@ expr parser::mk_sorry(pos_info const & p) {
         // TODO(Leo): remove the #ifdef.
         // The compilation option LEAN_IGNORE_SORRY is a temporary hack for the nightly builds
         // We use it to avoid a buch of warnings on cdash.
-        flycheck_warning wrn(regular_stream());
+        flycheck_warning wrn(m_ios);
         display_warning_pos(p.first, p.second);
-        regular_stream() << " using 'sorry'" << endl;
+        m_ios.get_regular_stream() << " using 'sorry'" << std::endl;
 #endif
     }
     return save_pos(::lean::mk_sorry(), p);
@@ -302,12 +300,6 @@ expr parser::mk_by(expr const & t, pos_info const & pos) {
     return save_pos(::lean::mk_by(t), pos);
 }
 
-expr parser::mk_by_plus(expr const & t, pos_info const & pos) {
-    if (!has_tactic_decls())
-        throw parser_error("invalid 'by+' expression, tactic module has not been imported", pos);
-    return save_pos(::lean::mk_by_plus(t), pos);
-}
-
 void parser::updt_options() {
     m_verbose     = get_verbose(m_ios.get_options());
     m_show_errors = get_parser_show_errors(m_ios.get_options());
@@ -325,35 +317,36 @@ void parser::updt_options() {
 }
 
 void parser::display_warning_pos(unsigned line, unsigned pos) {
-    ::lean::display_warning_pos(regular_stream(), get_stream_name().c_str(), line, pos);
+    default_type_context tc(env(), get_options());
+    auto out = regular(env(), ios(), tc);
+    ::lean::display_warning_pos(out, get_stream_name().c_str(), line, pos);
 }
 void parser::display_warning_pos(pos_info p) { display_warning_pos(p.first, p.second); }
 
 void parser::display_information_pos(pos_info pos) {
-    ::lean::display_information_pos(regular_stream(), get_stream_name().c_str(), pos.first, pos.second);
+    ::lean::display_information_pos(ios().get_regular_stream(), get_options(),
+                                    get_stream_name().c_str(), pos.first, pos.second);
 }
 
 void parser::display_error_pos(unsigned line, unsigned pos) {
-    ::lean::display_error_pos(regular_stream(), get_stream_name().c_str(), line, pos);
+    ::lean::display_error_pos(ios().get_regular_stream(), get_options(),
+                              get_stream_name().c_str(), line, pos);
 }
 void parser::display_error_pos(pos_info p) { display_error_pos(p.first, p.second); }
 
 void parser::display_error(char const * msg, unsigned line, unsigned pos) {
-    flycheck_error err(regular_stream());
+    flycheck_error err(ios());
     display_error_pos(line, pos);
-    regular_stream() << " " << msg << endl;
+    ios().get_regular_stream() << " " << msg << std::endl;
 }
 
 void parser::display_error(char const * msg, pos_info p) { display_error(msg, p.first, p.second); }
 
 void parser::display_error(throwable const & ex) {
+    default_type_context tc(env(), get_options());
+    auto out = regular(env(), ios(), tc);
     parser_pos_provider pos_provider(m_pos_table, get_stream_name(), m_last_cmd_pos);
-    ::lean::display_error(regular_stream(), &pos_provider, ex);
-}
-
-void parser::display_error(script_exception const & ex) {
-    parser_pos_provider pos_provider(m_pos_table, get_stream_name(), m_last_script_pos);
-    ::lean::display_error(regular_stream(), &pos_provider, ex);
+    ::lean::display_error(out, &pos_provider, ex);
 }
 
 void parser::throw_parser_exception(char const * msg, pos_info p) {
@@ -381,7 +374,7 @@ void parser::protected_call(std::function<void()> && f, std::function<void()> &&
             ex.get_exception().rethrow();
         }
     } catch (parser_exception & ex) {
-        CATCH(flycheck_error err(regular_stream()); regular_stream() << ex.what() << endl,
+        CATCH(flycheck_error err(ios()); ios().get_regular_stream() << ex.what() << std::endl,
               throw);
     } catch (parser_error & ex) {
         CATCH(display_error(ex.what(), ex.m_pos),
@@ -390,13 +383,10 @@ void parser::protected_call(std::function<void()> && f, std::function<void()> &&
         save_pre_info_data();
         reset_interrupt();
         if (m_verbose)
-            regular_stream() << "!!!Interrupted!!!" << endl;
+            ios().get_regular_stream() << "!!!Interrupted!!!" << std::endl;
         sync();
         if (m_use_exceptions || m_info_manager)
             throw;
-    } catch (script_exception & ex) {
-        reset_interrupt();
-        CATCH(display_error(ex), throw_nested_exception(ex, m_last_script_pos));
     } catch (throwable & ex) {
         reset_interrupt();
         CATCH(display_error(ex), throw_nested_exception(ex, m_last_cmd_pos));
@@ -478,6 +468,12 @@ expr parser::copy_with_new_pos(expr const & e, pos_info p) {
         return save_pos(update_binding(e,
                                        copy_with_new_pos(binding_domain(e), p),
                                        copy_with_new_pos(binding_body(e), p)),
+                        p);
+    case expr_kind::Let:
+        return save_pos(update_let(e,
+                                   copy_with_new_pos(let_type(e), p),
+                                   copy_with_new_pos(let_value(e), p),
+                                   copy_with_new_pos(let_body(e), p)),
                         p);
     case expr_kind::Macro: {
         buffer<expr> args;
@@ -1406,28 +1402,6 @@ expr parser::parse_notation_core(parse_table t, expr * left, bool as_tactic) {
             scoped_info.push_back(mk_pair(ps.size(), binder_pos));
             break;
         }
-        case notation::action_kind::LuaExt:
-            m_last_script_pos = p;
-            using_script([&](lua_State * L) {
-                    scoped_set_parser scope(L, *this);
-                    lua_getglobal(L, a.get_lua_fn().c_str());
-                    if (!lua_isfunction(L, -1))
-                        throw parser_error(sstream() << "failed to use notation implemented in Lua, "
-                                           << "Lua state does not contain function '"
-                                           << a.get_lua_fn() << "'", p);
-                    lua_pushinteger(L, p.first);
-                    lua_pushinteger(L, p.second);
-                    for (unsigned i = 0; i < args.size(); i++)
-                        push_expr(L, args[i]);
-                    pcall(L, args.size() + 2, 1, 0);
-                    if (!is_expr(L, -1))
-                        throw parser_error(sstream() << "failed to use notation implemented in Lua, value returned by function '"
-                                           << a.get_lua_fn() << "' is not an expression", p);
-                    args.push_back(rec_save_pos(to_expr(L, -1), p));
-                    kinds.push_back(a.kind());
-                    lua_pop(L, 1);
-                });
-            break;
         case notation::action_kind::Ext:
             args.push_back(a.get_parse_fn()(*this, args.size(), args.data(), p));
             kinds.push_back(a.kind());
@@ -1709,7 +1683,7 @@ expr parser::parse_backtick_expr_core() {
 expr parser::parse_backtick_expr() {
     auto p = pos();
     expr type   = parse_backtick_expr_core();
-    expr assump = mk_by_plus(save_pos(mk_constant(get_tactic_assumption_name()), p), p);
+    expr assump = mk_by(save_pos(mk_constant(get_tactic_assumption_name()), p), p);
     return save_pos(mk_typed_expr(type, assump), p);
 }
 
@@ -1756,7 +1730,7 @@ unsigned parser::curr_lbp_core(bool as_tactic) const {
         else
             return get_token_info().expr_precedence();
     case scanner::token_kind::CommandKeyword: case scanner::token_kind::Eof:
-    case scanner::token_kind::ScriptBlock:    case scanner::token_kind::QuotedSymbol:
+    case scanner::token_kind::QuotedSymbol:
         return 0;
     case scanner::token_kind::Backtick:
         return m_in_backtick ? 0 : get_max_prec();
@@ -2067,13 +2041,35 @@ expr parser::parse_tactic(unsigned rbp) {
     return left;
 }
 
+/** \brief Helper class for creating type context only if needed */
+class lazy_type_context : public abstract_type_context {
+    environment const & m_env;
+    options const & m_opts;
+    std::unique_ptr<default_type_context> m_ctx;
+    default_type_context & ctx() {
+        if (!m_ctx)
+            m_ctx.reset(new default_type_context(m_env, m_opts));
+        return *m_ctx;
+    }
+public:
+    lazy_type_context(environment const & env, options const & opts):m_env(env), m_opts(opts) {}
+    virtual ~lazy_type_context() {}
+    virtual environment const & env() const override { return const_cast<lazy_type_context*>(this)->ctx().env(); }
+    virtual expr whnf(expr const & e) override { return ctx().whnf(e); }
+    virtual bool is_def_eq(expr const & e1, expr const & e2) override { return ctx().is_def_eq(e1, e2); }
+    virtual expr infer(expr const & e) override { return ctx().infer(e); }
+    virtual expr check(expr const & e) override { return ctx().check(e); }
+    virtual optional<expr> is_stuck(expr const & e) override { return ctx().is_stuck(e); }
+};
+
 void parser::parse_command() {
     lean_assert(curr() == scanner::token_kind::CommandKeyword);
     m_last_cmd_pos = pos();
     name const & cmd_name = get_token_info().value();
     m_cmd_token = get_token_info().token();
     if (auto it = cmds().find(cmd_name)) {
-        scope_trace_env scope(m_env, m_ios);
+        lazy_type_context tc(m_env, get_options());
+        scope_trace_env scope(m_env, m_ios, tc);
         if (is_notation_cmd(cmd_name)) {
             in_notation_ctx ctx(*this);
             next();
@@ -2091,25 +2087,6 @@ void parser::parse_command() {
     }
 }
 
-void parser::parse_script(bool as_expr) {
-    m_last_script_pos = pos();
-    std::string script_code = m_scanner.get_str_val();
-    if (as_expr)
-        script_code = "return " + script_code;
-    next();
-    using_script([&](lua_State * L) {
-            dostring(L, script_code.c_str());
-        });
-}
-
-static optional<std::string> try_file(name const & f, char const * ext) {
-    try {
-        return optional<std::string>(find_file(f, {ext}));
-    } catch (...) {
-        return optional<std::string>();
-    }
-}
-
 static optional<std::string> try_file(std::string const & base, optional<unsigned> const & k, name const & f, char const * ext) {
     try {
         return optional<std::string>(find_file(base, k, f, ext));
@@ -2118,22 +2095,8 @@ static optional<std::string> try_file(std::string const & base, optional<unsigne
     }
 }
 
-static std::string * g_lua_module_key = nullptr;
-static void lua_module_reader(deserializer & d, shared_environment &,
-                              std::function<void(asynch_update_fn const &)> &,
-                              std::function<void(delayed_update_fn const &)> & add_delayed_update) {
-    name fname;
-    d >> fname;
-    add_delayed_update([=](environment const & env, io_state const &) -> environment {
-            std::string rname = find_file(fname, {".lua"});
-            system_import(rname.c_str());
-            return env;
-        });
-}
-
 void parser::parse_imports() {
     buffer<module_name> olean_files;
-    buffer<name>        lua_files;
     bool prelude     = false;
     std::string base = m_base_dir ? *m_base_dir : dirname(get_stream_name().c_str());
     bool imported    = false;
@@ -2148,9 +2111,9 @@ void parser::parse_imports() {
         } else {
             m_found_errors = true;
             if (!m_use_exceptions && m_show_errors) {
-                flycheck_error err(regular_stream());
+                flycheck_error err(ios());
                 display_error_pos(pos());
-                regular_stream() << " invalid import, unknown module '" << f << "'" << endl;
+                ios().get_regular_stream() << " invalid import, unknown module '" << f << "'" << std::endl;
             }
             if (m_use_exceptions)
                 throw parser_error(sstream() << "invalid import, unknown module '" << f << "'", pos());
@@ -2188,14 +2151,7 @@ void parser::parse_imports() {
             fingerprint       = hash(fingerprint, f.hash());
             if (k)
                 fingerprint = hash(fingerprint, *k);
-            if (auto it = try_file(f, ".lua")) {
-                if (k)
-                    throw parser_error(sstream() << "invalid import, failed to import '" << f
-                                       << "', relative paths are not supported for .lua files", pos());
-                lua_files.push_back(f);
-            } else {
-                import_olean(k, f);
-            }
+            import_olean(k, f);
             next();
         }
     }
@@ -2206,13 +2162,6 @@ void parser::parse_imports() {
     m_env = import_modules(m_env, base, olean_files.size(), olean_files.data(), num_threads,
                            keep_imported_thms, m_ios);
     m_env = update_fingerprint(m_env, fingerprint);
-    for (auto const & f : lua_files) {
-        std::string rname = find_file(f, {".lua"});
-        system_import(rname.c_str());
-        m_env = module::add(m_env, *g_lua_module_key, [=](environment const &, serializer & s) {
-                s << f;
-            });
-    }
     if (imported)
         commit_info(1, 0);
 }
@@ -2240,9 +2189,9 @@ bool parser::parse_commands() {
             // TODO(Leo): remove the #ifdef.
             // The compilation option LEAN_IGNORE_SORRY is a temporary hack for the nightly builds
             // We use it to avoid a buch of warnings on cdash.
-            flycheck_warning wrn(regular_stream());
+            flycheck_warning wrn(ios());
             display_warning_pos(pos());
-            regular_stream() << " imported file uses 'sorry'" << endl;
+            ios().get_regular_stream() << " imported file uses 'sorry'" << std::endl;
 #endif
         }
         while (!done) {
@@ -2257,10 +2206,6 @@ bool parser::parse_commands() {
                             commit_info();
                         parse_command();
                         commit_info();
-                        break;
-                    case scanner::token_kind::ScriptBlock:
-                        parse_script();
-                        save_snapshot();
                         break;
                     case scanner::token_kind::Eof:
                         done = true;
@@ -2307,8 +2252,6 @@ bool parser::parse_commands() {
 bool parser::curr_is_command_like() const {
     switch (curr()) {
     case scanner::token_kind::CommandKeyword:
-        return true;
-    case scanner::token_kind::ScriptBlock:
         return true;
     case scanner::token_kind::Eof:
         return true;
@@ -2366,7 +2309,7 @@ void parser::save_snapshot() {
     if (!m_snapshot_vector)
         return;
     if (m_snapshot_vector->empty() || static_cast<int>(m_snapshot_vector->back().m_line) != m_scanner.get_line())
-        m_snapshot_vector->push_back(snapshot(m_env, m_ngen, m_local_level_decls, m_local_decls,
+        m_snapshot_vector->push_back(snapshot(m_env, m_local_level_decls, m_local_decls,
                                               m_level_variables, m_variables, m_include_vars,
                                               m_ios.get_options(), m_parser_scope_stack, m_scanner.get_line()));
 }
@@ -2463,14 +2406,11 @@ void initialize_parser() {
     register_bool_option(*g_parser_parallel_import, LEAN_DEFAULT_PARSER_PARALLEL_IMPORT,
                          "(lean parser) import modules in parallel");
     g_tmp_prefix = new name(name::mk_internal_unique_name());
-    g_lua_module_key = new std::string("lua_module");
-    register_module_object_reader(*g_lua_module_key, lua_module_reader);
     g_anonymous_inst_name_prefix = new name("_inst");
 }
 
 void finalize_parser() {
     delete g_anonymous_inst_name_prefix;
-    delete g_lua_module_key;
     delete g_tmp_prefix;
     delete g_parser_show_errors;
     delete g_parser_parallel_import;

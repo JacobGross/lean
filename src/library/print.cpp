@@ -21,7 +21,8 @@ bool is_used_name(expr const & t, name const & n) {
             if (found) return false; // already found
             if ((is_constant(e) && const_name(e) == n)  // t has a constant named n
                 || (is_local(e) && (mlocal_name(e) == n || local_pp_name(e) == n)) // t has a local constant named n
-                || (is_let(e) && get_let_var_name(e) == n)) {
+                // TODO(Leo): remove after we transition to kernel Let-expression
+                || (is_let_macro(e) && get_let_var_name(e) == n)) {
                 found = true;
                 return false; // found it
             }
@@ -158,8 +159,6 @@ struct print_expr_fn {
                 out() << "{";
             else if (binding_info(e).is_inst_implicit())
                 out() << "[";
-            else if (!binding_info(e).is_contextual())
-                out() << "[[";
             else if (binding_info(e).is_strict_implicit())
                 out() << "{{";
             else
@@ -170,8 +169,6 @@ struct print_expr_fn {
                 out() << "}";
             else if (binding_info(e).is_inst_implicit())
                 out() << "]";
-            else if (!binding_info(e).is_contextual())
-                out() << "]]";
             else if (binding_info(e).is_strict_implicit())
                 out() << "}}";
             else
@@ -180,6 +177,15 @@ struct print_expr_fn {
         }
         out() << ", ";
         print_child(e);
+    }
+
+    void print_let(expr const & e) {
+        out() << "let " << let_name(e) << " : ";
+        print(let_type(e));
+        out() << " := ";
+        print(let_value(e));
+        out() << " in ";
+        print(let_body(e));
     }
 
     void print_const(expr const & a) {
@@ -216,6 +222,9 @@ struct print_expr_fn {
         case expr_kind::App:
             print_app(a);
             break;
+        case expr_kind::Let:
+            print_let(a);
+            break;
         case expr_kind::Lambda:
             print_binding("fun", a);
             break;
@@ -246,7 +255,7 @@ struct print_expr_fn {
 };
 
 formatter_factory mk_print_formatter_factory() {
-    return [](environment const & env, options const & o) { // NOLINT
+    return [](environment const & env, options const & o, abstract_type_context &) { // NOLINT
         return formatter(o, [=](expr const & e, options const &) {
                 std::ostringstream s;
                 print_expr_fn pr(s, env.prop_proof_irrel());

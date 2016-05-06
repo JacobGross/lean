@@ -9,7 +9,7 @@ Theorems about arrow types (function spaces)
 
 import types.pi
 
-open eq equiv is_equiv funext pi equiv.ops is_trunc unit
+open eq equiv is_equiv funext pi is_trunc unit
 
 namespace pi
 
@@ -49,7 +49,7 @@ namespace pi
 
   variables {B}
   definition arrow_equiv_arrow_right' [constructor] (f1 : A → (B ≃ B')) : (A → B) ≃ (A → B') :=
-  pi_equiv_pi_id f1
+  pi_equiv_pi_right f1
 
   /- Equivalence if one of the types is contractible -/
 

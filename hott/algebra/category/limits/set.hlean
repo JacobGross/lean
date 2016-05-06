@@ -11,7 +11,6 @@ import .colimits ..constructions.set hit.set_quotient
 open eq functor is_trunc sigma pi sigma.ops trunc set_quotient
 
 namespace category
-  local attribute Category.to.precategory [unfold 1]
   local attribute category.to_precategory [unfold 2]
 
   definition is_complete_set_cone.{u v w} [constructor]
@@ -50,7 +49,7 @@ namespace category
         apply eq_of_homotopy, intro x, fapply sigma_eq: esimp,
         { apply eq_of_homotopy, intro i, exact (ap10 (q i) x)⁻¹},
         { with_options [elaborator.ignore_instances true] -- TODO: fix
-          ( refine is_hprop.elimo _ _ _;
+          ( refine is_prop.elimo _ _ _;
             refine is_trunc_pi _ _; intro i;
             refine is_trunc_pi _ _; intro j;
             refine is_trunc_pi _ _; intro f;
@@ -59,7 +58,7 @@ namespace category
 
   definition is_cocomplete_set_cone_rel.{u v w} [unfold 3 4]
     (I : Precategory.{v w}) (F : I ⇒ set.{max u v w}ᵒᵖ) : (Σ(i : I), trunctype.carrier (F i)) →
-    (Σ(i : I), trunctype.carrier (F i)) → hprop.{max u v w} :=
+    (Σ(i : I), trunctype.carrier (F i)) → Prop.{max u v w} :=
   begin
     intro v w, induction v with i x, induction w with j y,
       fapply trunctype.mk,
@@ -74,7 +73,7 @@ namespace category
   fapply cone_obj.mk,
   { fapply trunctype.mk,
     { apply set_quotient (is_cocomplete_set_cone_rel.{u v w} I F)},
-    { apply is_hset_set_quotient}},
+    { apply is_set_set_quotient}},
   { fapply nat_trans.mk,
     { intro i x, esimp, apply class_of, exact ⟨i, x⟩},
     { intro i j f, esimp, apply eq_of_homotopy, intro y, apply eq_of_rel, esimp,
@@ -100,7 +99,7 @@ namespace category
       { esimp, intro h, induction h with f q, apply cone_hom_eq, esimp at *,
         apply eq_of_homotopy, refine set_quotient.rec _ _,
         { intro v, induction v with i x, esimp, exact (ap10 (q i) x)⁻¹},
-        { intro v w r, apply is_hprop.elimo}}},
+        { intro v w r, apply is_prop.elimo}}},
   end
 
 end category

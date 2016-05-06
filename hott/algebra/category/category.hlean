@@ -6,7 +6,7 @@ Author: Jakob von Raumer
 
 import .iso
 
-open iso is_equiv equiv eq is_trunc sigma equiv.ops
+open iso is_equiv equiv eq is_trunc sigma
 
 /-
   A category is a precategory extended by a witness
@@ -33,8 +33,6 @@ namespace category
   -- This coercion is needed for definitions such as category_eq_of_equiv
   -- without it, we would have to explicitly use category.to_precategory
   attribute category.to_precategory [coercion]
-
-  attribute category [multiple_instances]
 
   abbreviation iso_of_path_equiv := @category.iso_of_path_equiv
   attribute category.iso_of_path_equiv [instance]
@@ -116,7 +114,7 @@ namespace category
     apply eq_of_fn_eq_fn !category.sigma_char,
     fapply sigma_eq,
     { induction C, induction D, esimp, exact precategory_eq @p q},
-    { unfold is_univalent, apply is_hprop.elimo},
+    { unfold is_univalent, apply is_prop.elimo},
   end
 
   definition category_eq_of_equiv {ob : Type}

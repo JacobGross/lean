@@ -12,7 +12,7 @@ Author: Leonardo de Moura
 #include "kernel/type_checker.h"
 #include "library/expr_lt.h"
 #include "library/unifier.h"
-#include "library/local_context.h"
+#include "library/old_local_context.h"
 #include "library/tactic/tactic.h"
 #include "library/tactic/elaborate.h"
 #include "frontends/lean/elaborator_context.h"
@@ -31,14 +31,12 @@ class elaborator : public coercion_info_manager {
     typedef rb_map<expr, pair<expr, constraint_seq>, expr_quick_cmp> cache;
     typedef std::vector<pair<expr, expr>> to_check_sorts;
     elaborator_context & m_ctx;
-    name_generator       m_ngen;
     type_checker_ptr     m_tc;
     type_checker_ptr     m_coercion_from_tc;
     type_checker_ptr     m_coercion_to_tc;
     // mapping from metavariable ?m to the (?m l_1 ... l_n) where [l_1 ... l_n] are the local constants
     // representing the context where ?m was created.
-    local_context        m_context; // current local context: a list of local constants
-    local_context        m_full_context; // superset of m_context, it also contains non-contextual locals.
+    old_local_context    m_context; // current local context: a list of local constants
     mvar2meta            m_mvar2meta;
     cache                m_cache;
     // The following vector contains sorts that we should check
@@ -118,7 +116,6 @@ class elaborator : public coercion_info_manager {
     expr visit_expecting_type_of(expr const & e, expr const & t, constraint_seq & cs);
     expr visit_choice(expr const & e, optional<expr> const & t, constraint_seq & cs);
     expr visit_by(expr const & e, optional<expr> const & t, constraint_seq & cs);
-    expr visit_by_plus(expr const & e, optional<expr> const & t, constraint_seq & cs);
     expr visit_calc_proof(expr const & e, optional<expr> const & t, constraint_seq & cs);
     expr add_implict_args(expr e, constraint_seq & cs);
     pair<expr, expr> ensure_fun(expr f, constraint_seq & cs);
@@ -190,11 +187,13 @@ class elaborator : public coercion_info_manager {
 
     expr visit_prenum(expr const & e, constraint_seq & cs);
 
+    expr visit_checkpoint_expr(expr const & e, constraint_seq & cs);
+
     void check_used_local_tactic_hints();
 
     void show_goal(proof_state const & ps, expr const & start, expr const & end, expr const & curr);
 public:
-    elaborator(elaborator_context & ctx, name_generator && ngen, bool nice_mvar_names = false);
+    elaborator(elaborator_context & ctx, bool nice_mvar_names = false);
     std::tuple<expr, level_param_names> operator()(list<expr> const & ctx, expr const & e, bool _ensure_type);
     std::tuple<expr, expr, level_param_names> operator()(expr const & t, expr const & v, name const & n);
 };

@@ -5,10 +5,11 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Leonardo de Moura
 */
 #include "kernel/kernel_exception.h"
+#include "kernel/type_checker.h"
 #include "library/unifier.h"
 #include "library/print.h"
 #include "library/tactic/tactic.h"
-#include "library/error_handling/error_handling.h"
+#include "library/error_handling.h"
 #include "api/exception.h"
 #include "api/string.h"
 using namespace lean; // NOLINT
@@ -52,7 +53,8 @@ char const * lean_exception_get_detailed_message(lean_exception e) {
         ios.set_regular_channel(out);
         ios.set_diagnostic_channel(out);
         environment env;
-        io_state_stream ioss(env, ios);
+        type_checker tc(env);
+        io_state_stream ioss(env, ios, tc.get_type_context());
         display_error(ioss, nullptr, *lean::to_exception(e));
         return mk_string(static_cast<string_output_channel const *>(out.get())->str());
     } catch (...) {

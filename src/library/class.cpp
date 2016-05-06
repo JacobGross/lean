@@ -7,6 +7,7 @@ Author: Leonardo de Moura
 #include <string>
 #include "util/lbool.h"
 #include "util/sstream.h"
+#include "util/fresh_name.h"
 #include "kernel/instantiate.h"
 #include "library/scoped_ext.h"
 #include "library/kernel_serializer.h"
@@ -15,7 +16,6 @@ Author: Leonardo de Moura
 #include "library/tc_multigraph.h"
 #include "library/protected.h"
 #include "library/class.h"
-#include "library/decl_stats.h"
 #include "library/attribute_manager.h"
 
 namespace lean {
@@ -234,8 +234,7 @@ name get_class_name(environment const & env, expr const & e) {
 
 environment add_class(environment const & env, name const & n, name const & ns, bool persistent) {
     check_class(env, n);
-    environment new_env = class_ext::add_entry(env, get_dummy_ios(), class_entry(n), ns, persistent);
-    return mark_class_instance_somewhere(new_env, n);
+    return class_ext::add_entry(env, get_dummy_ios(), class_entry(n), ns, persistent);
 }
 
 void get_classes(environment const & env, buffer<name> & classes) {
@@ -250,35 +249,37 @@ bool is_class(environment const & env, name const & c) {
     return s.m_instances.contains(c);
 }
 
-type_checker_ptr mk_class_type_checker(environment const & env, name_generator && ngen, bool conservative) {
+type_checker_ptr mk_class_type_checker(environment const & env, bool conservative) {
     auto pred = conservative ? mk_not_reducible_pred(env) : mk_irreducible_pred(env);
     class_state s = class_ext::get_state(env);
-    return mk_type_checker(env, std::move(ngen), [=](name const & n) {
+    return mk_type_checker(env, [=](name const & n) {
             return s.m_instances.contains(n) || pred(n);
         });
 }
 
-static name * g_tmp_prefix = nullptr;
+static environment set_reducible_if_def(environment const & env, name const & n, name const & ns, bool persistent) {
+    declaration const & d = env.get(n);
+    if (d.is_definition() && !d.is_theorem())
+        return set_reducible(env, n, reducible_status::Reducible, ns, persistent);
+    else
+        return env;
+}
+
 environment add_instance(environment const & env, name const & n, unsigned priority, name const & ns, bool persistent) {
     declaration d = env.get(n);
     expr type = d.get_type();
-    name_generator ngen(*g_tmp_prefix);
-    auto tc = mk_class_type_checker(env, ngen.mk_child(), false);
+    auto tc = mk_class_type_checker(env, false);
     while (true) {
         type = tc->whnf(type).first;
         if (!is_pi(type))
             break;
-        type = instantiate(binding_body(type), mk_local(ngen.next(), binding_domain(type)));
+        type = instantiate(binding_body(type), mk_local(mk_fresh_name(), binding_domain(type)));
     }
     name c = get_class_name(env, get_app_fn(type));
     check_is_class(env, c);
     environment new_env = class_ext::add_entry(env, get_dummy_ios(), class_entry(class_entry_kind::Instance, c, n, priority),
                                                ns, persistent);
-    return mark_class_instance_somewhere(new_env, n);
-}
-
-environment add_instance(environment const & env, name const & n, name const & ns, bool persistent) {
-    return add_instance(env, n, LEAN_DEFAULT_PRIORITY, ns, persistent);
+    return set_reducible_if_def(new_env, n, ns, persistent);
 }
 
 static name * g_source = nullptr;
@@ -306,7 +307,7 @@ static pair<name, name> get_source_target(environment const & env, type_checker 
 }
 
 environment add_trans_instance(environment const & env, name const & n, unsigned priority, name const & ns, bool persistent) {
-    type_checker_ptr  tc     = mk_type_checker(env, name_generator());
+    type_checker_ptr  tc     = mk_type_checker(env);
     pair<name, name> src_tgt = get_source_target(env, *tc, n);
     class_state const & s = class_ext::get_state(env);
     tc_multigraph g    = s.m_mgraph;
@@ -314,19 +315,14 @@ environment add_trans_instance(environment const & env, name const & n, unsigned
     environment new_env = new_env_insts.first;
     new_env = class_ext::add_entry(new_env, get_dummy_ios(),
                                    class_entry::mk_trans_inst(src_tgt.first, src_tgt.second, n, priority), ns, persistent);
-    new_env = mark_class_instance_somewhere(new_env, n);
+    new_env = set_reducible_if_def(new_env, n, ns, persistent);
     for (tc_edge const & edge : new_env_insts.second) {
         new_env = class_ext::add_entry(new_env, get_dummy_ios(),
                                        class_entry::mk_derived_trans_inst(edge.m_from, edge.m_to, edge.m_cnst), ns, persistent);
         new_env = set_reducible(new_env, edge.m_cnst, reducible_status::Reducible, ns, persistent);
         new_env = add_protected(new_env, edge.m_cnst);
-        new_env = mark_class_instance_somewhere(new_env, edge.m_cnst);
     }
     return new_env;
-}
-
-environment add_trans_instance(environment const & env, name const & n, name const & ns, bool persistent) {
-    return add_trans_instance(env, n, LEAN_DEFAULT_PRIORITY, ns, persistent);
 }
 
 environment mark_multiple_instances(environment const & env, name const & n, name const & ns, bool persistent) {
@@ -401,7 +397,7 @@ static lbool is_quick_ext_class(type_checker const & tc, expr const & type, name
     while (true) {
         switch (it->kind()) {
         case expr_kind::Var:  case expr_kind::Sort:   case expr_kind::Local:
-        case expr_kind::Meta: case expr_kind::Lambda:
+        case expr_kind::Meta: case expr_kind::Lambda: case expr_kind::Let:
             return l_false;
         case expr_kind::Macro:
             return l_undef;
@@ -442,7 +438,7 @@ static lbool is_quick_ext_class(type_checker const & tc, expr const & type, name
 static optional<name> is_full_ext_class(type_checker & tc, expr type) {
     type = tc.whnf(type).first;
     if (is_pi(type)) {
-        return is_full_ext_class(tc, instantiate(binding_body(type), mk_local(tc.mk_fresh_name(), binding_domain(type))));
+        return is_full_ext_class(tc, instantiate(binding_body(type), mk_local(mk_fresh_name(), binding_domain(type))));
     } else {
         expr f = get_app_fn(type);
         if (!is_constant(f))
@@ -477,7 +473,6 @@ list<expr> get_local_instances(type_checker & tc, list<expr> const & ctx, name c
 }
 
 void initialize_class() {
-    g_tmp_prefix = new name(name::mk_internal_unique_name());
     g_source     = new name("_source");
     g_class_name = new name("class");
     g_key = new std::string("class");
@@ -517,6 +512,5 @@ void finalize_class() {
     delete g_key;
     delete g_class_name;
     delete g_source;
-    delete g_tmp_prefix;
 }
 }

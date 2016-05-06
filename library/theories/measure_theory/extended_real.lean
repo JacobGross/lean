@@ -31,10 +31,10 @@ protected definition prio := num.pred real.prio
 
 /- arithmetic operations on the ereals -/
 
-definition ereal_has_zero [reducible] [instance] [priority ereal.prio] : has_zero ereal :=
+definition ereal_has_zero [instance] [priority ereal.prio] : has_zero ereal :=
 has_zero.mk (of_real 0)
 
-definition ereal_has_one [reducible] [instance] [priority ereal.prio] : has_one ereal :=
+definition ereal_has_one [instance] [priority ereal.prio] : has_one ereal :=
 has_one.mk (of_real 1)
 
 protected definition add : ereal → ereal → ereal
@@ -61,18 +61,18 @@ protected definition mul : ereal → ereal → ereal
 | -∞ a                    := ereal.neg (blow_up a)
 | a -∞                    := ereal.neg (blow_up a)
 
-definition ereal_has_add [reducible] [instance] [priority ereal.prio] : has_add ereal :=
+definition ereal_has_add [instance] [priority ereal.prio] : has_add ereal :=
 has_add.mk ereal.add
 
-definition ereal_has_neg [reducible] [instance] [priority ereal.prio] : has_neg ereal :=
+definition ereal_has_neg [instance] [priority ereal.prio] : has_neg ereal :=
 has_neg.mk ereal.neg
 
 protected definition sub (u v : ereal) : ereal := u + -v
 
-definition ereal_has_sub [reducible] [instance] [priority ereal.prio] : has_sub ereal :=
+definition ereal_has_sub [instance] [priority ereal.prio] : has_sub ereal :=
 has_sub.mk ereal.sub
 
-definition ereal_has_mul [reducible] [instance] [priority ereal.prio] : has_mul ereal :=
+definition ereal_has_mul [instance] [priority ereal.prio] : has_mul ereal :=
 has_mul.mk ereal.mul
 
 protected theorem zero_def : (0 : ereal) = of_real 0 := rfl
@@ -161,7 +161,7 @@ protected theorem neg_zero : -(0 : ereal) = 0 := rfl
 
 theorem infty_mul_pos {x : real} (H : x > 0) : ∞ * x = ∞ :=
 have H1 : x ≠ 0, from ne_of_gt H,
-by+ rewrite [*ereal.mul_def, ↑ereal.mul, if_neg H1, if_pos H]
+by rewrite [*ereal.mul_def, ↑ereal.mul, if_neg H1, if_pos H]
 
 theorem pos_mul_infty {x : real} (H : x > 0) : x * ∞ = ∞ :=
 by rewrite [ereal.mul_comm, infty_mul_pos H]
@@ -169,7 +169,7 @@ by rewrite [ereal.mul_comm, infty_mul_pos H]
 theorem infty_mul_neg {x : real} (H : x < 0) : ∞ * x = -∞ :=
 have H1 : x ≠ 0, from ne_of_lt H,
 have H2 : ¬ x > 0, from not_lt_of_gt H,
-by+ rewrite [*ereal.mul_def, ↑ereal.mul, if_neg H1, if_neg H2]
+by rewrite [*ereal.mul_def, ↑ereal.mul, if_neg H1, if_neg H2]
 
 theorem neg_mul_infty {x : real} (H : x < 0) : x * ∞ = -∞ :=
 by rewrite [ereal.mul_comm, infty_mul_neg H]
@@ -197,7 +197,7 @@ private theorem aux2 : ∀ u : ereal, -u * ∞ = -(u * ∞)
                       by rewrite [ereal.neg_of_real, pos_mul_infty (neg_pos_of_neg H),
                                   neg_mul_infty H])
                    (assume H : x = 0,
-                      by rewrite [H, ereal.neg_zero, *zero_mul_infty, ereal.neg_zero])
+                      by krewrite [H, ereal.neg_zero, *zero_mul_infty, ereal.neg_zero])
                    (assume H : x > 0,
                       by rewrite [ereal.neg_of_real, neg_mul_infty (neg_neg_of_pos H),
                                    pos_mul_infty H])
@@ -238,16 +238,16 @@ lt.by_cases
     lt.by_cases
       (assume H1 : y < 0, by rewrite [infty_mul_neg H, neg_infty, ereal_neg_mul, -of_real_mul,
                                      infty_mul_neg H1, infty_mul_pos (mul_pos_of_neg_of_neg H H1)])
-      (assume H1 : y = 0, by rewrite [H1, *ereal.mul_zero])
+      (assume H1 : y = 0, by krewrite [H1, *ereal.mul_zero])
       (assume H1 : y > 0, by rewrite [infty_mul_neg H, neg_infty, *ereal_neg_mul, -of_real_mul,
                                      infty_mul_pos H1, infty_mul_neg (mul_neg_of_neg_of_pos H H1)]))
   (assume H : x = 0,
-    by rewrite [H, ereal.mul_zero, *ereal.zero_mul, ereal.mul_zero])
+    by krewrite [H, ereal.mul_zero, *ereal.zero_mul, ereal.mul_zero])
   (assume H : x > 0,
     lt.by_cases
       (assume H1 : y < 0, by rewrite [infty_mul_pos H, infty_mul_neg H1, -of_real_mul,
                                      infty_mul_neg (mul_neg_of_pos_of_neg H H1)])
-      (assume H1 : y = 0, by rewrite [H1, *ereal.mul_zero])
+      (assume H1 : y = 0, by krewrite [H1, *ereal.mul_zero])
       (assume H1 : y > 0, by rewrite [infty_mul_pos H, infty_mul_pos H1, -of_real_mul,
                                      infty_mul_pos (mul_pos H H1)]))
 
@@ -275,14 +275,13 @@ protected theorem one_mul : ∀ u : ereal, of_real 1 * u = u
 | -∞          := by rewrite [neg_infty, ereal_mul_neg, pos_mul_infty zero_lt_one]
 
 protected theorem mul_one (u : ereal) : u * 1 = u :=
-by rewrite [ereal.mul_comm, ereal.one_mul]
+by krewrite [ereal.mul_comm, ereal.one_mul]
 
 /- instantiating arithmetic structures -/
 
 -- Note that distributivity fails, e.g. ∞ ⬝ (-1 + 1) ≠ ∞ * -1 + ∞ * 1
 
-protected definition comm_monoid [reducible] [trans_instance] :
-    comm_monoid ereal :=
+protected definition comm_monoid [trans_instance] : comm_monoid ereal :=
 ⦃comm_monoid,
   mul       := ereal.mul,
   mul_assoc := ereal.mul_assoc,
@@ -292,8 +291,7 @@ protected definition comm_monoid [reducible] [trans_instance] :
   mul_comm  := ereal.mul_comm
 ⦄
 
-protected definition add_comm_monoid [reducible] [trans_instance] :
-    add_comm_monoid ereal :=
+protected definition add_comm_monoid [trans_instance] : add_comm_monoid ereal :=
 ⦃add_comm_monoid,
   add       := ereal.add,
   add_assoc := ereal.add_assoc,
@@ -313,8 +311,7 @@ protected definition le : ereal → ereal → Prop
 | ∞ (of_real y)           := false
 | ∞ -∞                    := false
 
-definition ereal_has_le [reducible] [instance] [priority ereal.prio] :
-  has_le ereal :=
+definition ereal_has_le [instance] [priority ereal.prio] : has_le ereal :=
 has_le.mk ereal.le
 
 theorem of_real_le_of_real (x y : real) : of_real x ≤ of_real y ↔ x ≤ y :=
@@ -333,7 +330,7 @@ theorem neg_infty_le : ∀ v, -∞ ≤ v
 protected theorem le_refl : ∀ u : ereal, u ≤ u
 | ∞           := trivial
 | -∞          := trivial
-| (of_real x) := by rewrite [of_real_le_of_real]; apply le.refl
+| (of_real x) := by rewrite [of_real_le_of_real]
 
 protected theorem le_trans : ∀ u v w : ereal, u ≤ v → v ≤ w → u ≤ w
 | u v ∞            H1 H2 := !le_infty
@@ -362,7 +359,7 @@ protected theorem le_antisymm : ∀ u v : ereal, u ≤ v → v ≤ u → u = v
 
 protected definition lt (x y : ereal) : Prop := x ≤ y ∧ x ≠ y
 
-definition ereal_has_lt [reducible] [instance] [priority ereal.prio] :
+definition ereal_has_lt [instance] [priority ereal.prio] :
   has_lt ereal :=
 has_lt.mk ereal.lt
 
@@ -393,8 +390,7 @@ theorem neg_infty_lt_of_real (x : real) : -∞ < of_real x :=  and.intro trivial
 
 theorem of_real_lt_infty (x : real) : of_real x < ∞ := and.intro trivial (ne.symm !infty_ne_of_real)
 
-protected definition decidable_linear_order [reducible] [trans_instance] :
-    decidable_linear_order ereal :=
+protected definition decidable_linear_order [trans_instance] : decidable_linear_order ereal :=
 ⦃decidable_linear_order,
   le              := ereal.le,
   le_refl         := ereal.le_refl,

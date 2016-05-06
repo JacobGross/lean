@@ -287,7 +287,7 @@ nat.cases_on n
              ... = succ (succ n' * m' + n') : add_succ)⁻¹
           !succ_ne_zero))
 
-protected definition comm_semiring [reducible] [trans_instance] : comm_semiring nat :=
+protected definition comm_semiring [trans_instance] : comm_semiring nat :=
 ⦃comm_semiring,
  add            := nat.add,
  add_assoc      := nat.add_assoc,
@@ -305,7 +305,7 @@ protected definition comm_semiring [reducible] [trans_instance] : comm_semiring 
  zero_mul       := nat.zero_mul,
  mul_zero       := nat.mul_zero,
  mul_comm       := nat.mul_comm,
- is_hset_carrier:= _⦄
+ is_set_carrier:= _⦄
 end nat
 
 section

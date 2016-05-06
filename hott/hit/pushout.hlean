@@ -6,9 +6,9 @@ Authors: Floris van Doorn
 Declaration of the pushout
 -/
 
-import .quotient cubical.square types.sigma
+import .quotient types.sigma types.arrow_2
 
-open quotient eq sum equiv equiv.ops is_trunc
+open quotient eq sum equiv is_trunc
 
 namespace pushout
 section
@@ -51,7 +51,7 @@ parameters {TL BL TR : Type} (f : TL → BL) (g : TL → TR)
 
   theorem rec_glue {P : pushout → Type} (Pinl : Π(x : BL), P (inl x))
     (Pinr : Π(x : TR), P (inr x)) (Pglue : Π(x : TL), Pinl (f x) =[glue x] Pinr (g x))
-      (x : TL) : apdo (rec Pinl Pinr Pglue) (glue x) = Pglue x :=
+      (x : TL) : apd (rec Pinl Pinr Pglue) (glue x) = Pglue x :=
   !rec_eq_of_rel
 
   protected definition elim {P : Type} (Pinl : BL → P) (Pinr : TR → P)
@@ -67,7 +67,7 @@ parameters {TL BL TR : Type} (f : TL → BL) (g : TL → TR)
     : ap (elim Pinl Pinr Pglue) (glue x) = Pglue x :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant (glue x)),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑pushout.elim,rec_glue],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑pushout.elim,rec_glue],
   end
 
   protected definition elim_type (Pinl : BL → Type) (Pinr : TR → Type)
@@ -83,13 +83,13 @@ parameters {TL BL TR : Type} (f : TL → BL) (g : TL → TR)
     : transport (elim_type Pinl Pinr Pglue) (glue x) = Pglue x :=
   by rewrite [tr_eq_cast_ap_fn,↑elim_type,elim_glue];apply cast_ua_fn
 
-  protected definition rec_hprop {P : pushout → Type} [H : Πx, is_hprop (P x)]
+  protected definition rec_prop {P : pushout → Type} [H : Πx, is_prop (P x)]
     (Pinl : Π(x : BL), P (inl x)) (Pinr : Π(x : TR), P (inr x)) (y : pushout) :=
-  rec Pinl Pinr (λx, !is_hprop.elimo) y
+  rec Pinl Pinr (λx, !is_prop.elimo) y
 
-  protected definition elim_hprop {P : Type} [H : is_hprop P] (Pinl : BL → P) (Pinr : TR → P)
+  protected definition elim_prop {P : Type} [H : is_prop P] (Pinl : BL → P) (Pinr : TR → P)
     (y : pushout) : P :=
-  elim Pinl Pinr (λa, !is_hprop.elim) y
+  elim Pinl Pinr (λa, !is_prop.elim) y
 
 end
 end pushout
@@ -119,6 +119,11 @@ namespace pushout
     { intro f, apply eq_of_homotopy, intro x, induction x: esimp,
       apply eq_pathover, apply hdeg_square, esimp, apply elim_glue},
   end
+
+  /- glue squares -/
+  protected definition glue_square {x x' : TL} (p : x = x')
+    : square (glue x) (glue x') (ap inl (ap f p)) (ap inr (ap g p)) :=
+  by cases p; apply vrefl
 
 end pushout
 
@@ -153,24 +158,28 @@ namespace pushout
 
     protected definition flattening : sigma P ≃ pushout F G :=
     begin
-      assert H : Πz, P z ≃ quotient.elim_type (sum.rec Pinl Pinr) Pglue' z,
-      { intro z, apply equiv_of_eq,
-        assert H1 : pushout.elim_type Pinl Pinr Pglue
+      have H : Πz, P z ≃ quotient.elim_type (sum.rec Pinl Pinr) Pglue' z,
+      begin
+        intro z, apply equiv_of_eq,
+        have H1 : pushout.elim_type Pinl Pinr Pglue
                   = quotient.elim_type (sum.rec Pinl Pinr) Pglue',
-        { change
+        begin
+        change
       quotient.rec (sum.rec Pinl Pinr)
         (λa a' r, pushout_rel.cases_on r (λx, pathover_of_eq (ua (Pglue x))))
     = quotient.rec (sum.rec Pinl Pinr)
         (λa a' r, pathover_of_eq (ua (pushout_rel.cases_on r Pglue))),
-          assert H2 : Π⦃a a'⦄ r : pushout_rel f g a a',
+          have H2 : Π⦃a a'⦄ r : pushout_rel f g a a',
       pushout_rel.cases_on r (λx, pathover_of_eq (ua (Pglue x)))
     = pathover_of_eq (ua (pushout_rel.cases_on r Pglue))
       :> sum.rec Pinl Pinr a =[eq_of_rel (pushout_rel f g) r]
          sum.rec Pinl Pinr a',
-          { intros a a' r, cases r, reflexivity },
-          rewrite (eq_of_homotopy3 H2) },
-        apply ap10 H1 },
-      apply equiv.trans (sigma_equiv_sigma_id H),
+          begin intros a a' r, cases r, reflexivity end,
+          rewrite (eq_of_homotopy3 H2)
+        end,
+        apply ap10 H1
+      end,
+      apply equiv.trans (sigma_equiv_sigma_right H),
       apply equiv.trans (quotient.flattening.flattening_lemma R (sum.rec Pinl Pinr) Pglue'),
       fapply equiv.MK,
       { intro q, induction q with z z z' fr,
@@ -200,4 +209,156 @@ namespace pushout
     end
   end
 
+  -- Commutativity of pushouts
+  section
+  variables {TL BL TR : Type} (f : TL → BL) (g : TL → TR)
+
+  protected definition transpose [constructor] : pushout f g → pushout g f :=
+  begin
+    intro x, induction x, apply inr a, apply inl a, apply !glue⁻¹
+  end
+
+  --TODO prove without krewrite?
+  protected definition transpose_involutive (x : pushout f g) :
+    pushout.transpose g f (pushout.transpose f g x) = x :=
+  begin
+      induction x, apply idp, apply idp,
+      apply eq_pathover, refine _ ⬝hp !ap_id⁻¹,
+      refine !(ap_compose (pushout.transpose _ _)) ⬝ph _, esimp[pushout.transpose],
+      krewrite [elim_glue, ap_inv, elim_glue, inv_inv], apply hrfl
+  end
+
+  protected definition symm : pushout f g ≃ pushout g f :=
+  begin
+    fapply equiv.MK, do 2 exact !pushout.transpose,
+    do 2 (intro x; apply pushout.transpose_involutive),
+  end
+
+  end
+
+  -- Functoriality of pushouts
+  section
+    section lemmas
+      variables {X : Type} {x₀ x₁ x₂ x₃ : X}
+                (p : x₀ = x₁) (q : x₁ = x₂) (r : x₂ = x₃)
+      private definition is_equiv_functor_lemma₁
+        : (r ⬝ ((p ⬝ q ⬝ r)⁻¹ ⬝ p)) = q⁻¹ :=
+      by cases p; cases r; cases q; reflexivity
+
+      private definition is_equiv_functor_lemma₂
+        : (p ⬝ q ⬝ r)⁻¹ ⬝ (p ⬝ q) = r⁻¹ :=
+      by cases p; cases r; cases q; reflexivity
+    end lemmas
+
+    variables {TL BL TR : Type} (f : TL → BL) (g : TL → TR)
+              {TL' BL' TR' : Type} (f' : TL' → BL') (g' : TL' → TR')
+              (tl : TL → TL') (bl : BL → BL') (tr : TR → TR')
+              (fh : bl ∘ f ~ f' ∘ tl) (gh : tr ∘ g ~ g' ∘ tl)
+    include fh gh
+
+    protected definition functor [reducible] : pushout f g → pushout f' g' :=
+    begin
+      intro x, induction x with a b z,
+      { exact inl (bl a) },
+      { exact inr (tr b) },
+      { exact (ap inl (fh z)) ⬝ glue (tl z) ⬝ (ap inr (gh z)⁻¹) }
+    end
+
+    protected definition ap_functor_inl [reducible] {x x' : BL} (p : x = x')
+      : ap (pushout.functor f g f' g' tl bl tr fh gh) (ap inl p) = ap inl (ap bl p) :=
+    by cases p; reflexivity
+
+    protected definition ap_functor_inr [reducible] {x x' : TR} (p : x = x')
+      : ap (pushout.functor f g f' g' tl bl tr fh gh) (ap inr p) = ap inr (ap tr p) :=
+    by cases p; reflexivity
+
+    variables [ietl : is_equiv tl] [iebl : is_equiv bl] [ietr : is_equiv tr]
+    include ietl iebl ietr
+
+    open equiv is_equiv arrow
+    protected definition is_equiv_functor [instance]
+      : is_equiv (pushout.functor f g f' g' tl bl tr fh gh) :=
+    adjointify
+      (pushout.functor f g f' g' tl bl tr fh gh)
+      (pushout.functor f' g' f g tl⁻¹ bl⁻¹ tr⁻¹
+        (inv_commute_of_commute tl bl f f' fh)
+        (inv_commute_of_commute tl tr g g' gh))
+    abstract begin
+      intro x', induction x' with a' b' z',
+      { apply ap inl, apply right_inv },
+      { apply ap inr, apply right_inv },
+      { apply eq_pathover,
+        rewrite [ap_id,ap_compose' (pushout.functor f g f' g' tl bl tr fh gh)],
+        krewrite elim_glue,
+        rewrite [ap_inv,ap_con,ap_inv],
+        krewrite [pushout.ap_functor_inr], rewrite ap_con,
+        krewrite [pushout.ap_functor_inl,elim_glue],
+        apply transpose,
+        apply move_top_of_right, apply move_top_of_left',
+        krewrite [-(ap_inv inl),-ap_con,-(ap_inv inr),-ap_con],
+        apply move_top_of_right, apply move_top_of_left',
+        krewrite [-ap_con,-(ap_inv inl),-ap_con],
+        rewrite ap_bot_inv_commute_of_commute,
+        apply eq_hconcat (ap02 inl
+          (is_equiv_functor_lemma₁
+            (right_inv bl (f' z'))
+            (ap f' (right_inv tl z')⁻¹)
+            (fh (tl⁻¹ z'))⁻¹)),
+        rewrite [ap_inv f',inv_inv],
+        rewrite ap_bot_inv_commute_of_commute,
+        refine hconcat_eq _ (ap02 inr
+          (is_equiv_functor_lemma₁
+            (right_inv tr (g' z'))
+            (ap g' (right_inv tl z')⁻¹)
+            (gh (tl⁻¹ z'))⁻¹))⁻¹,
+        rewrite [ap_inv g',inv_inv],
+        apply pushout.glue_square }
+    end end
+    abstract begin
+      intro x, induction x with a b z,
+      { apply ap inl, apply left_inv },
+      { apply ap inr, apply left_inv },
+      { apply eq_pathover,
+        rewrite [ap_id,ap_compose'
+          (pushout.functor f' g' f g tl⁻¹ bl⁻¹ tr⁻¹ _ _)
+          (pushout.functor f g f' g' tl bl tr _ _)],
+        krewrite elim_glue,
+        rewrite [ap_inv,ap_con,ap_inv],
+        krewrite [pushout.ap_functor_inr], rewrite ap_con,
+        krewrite [pushout.ap_functor_inl,elim_glue],
+        apply transpose,
+        apply move_top_of_right, apply move_top_of_left',
+        krewrite [-(ap_inv inl),-ap_con,-(ap_inv inr),-ap_con],
+        apply move_top_of_right, apply move_top_of_left',
+        krewrite [-ap_con,-(ap_inv inl),-ap_con],
+        rewrite inv_commute_of_commute_top,
+        apply eq_hconcat (ap02 inl
+          (is_equiv_functor_lemma₂
+            (ap bl⁻¹ (fh z))⁻¹
+            (left_inv bl (f z))
+            (ap f (left_inv tl z)⁻¹))),
+        rewrite [ap_inv f,inv_inv],
+        rewrite inv_commute_of_commute_top,
+        refine hconcat_eq _ (ap02 inr
+          (is_equiv_functor_lemma₂
+            (ap tr⁻¹ (gh z))⁻¹
+            (left_inv tr (g z))
+            (ap g (left_inv tl z)⁻¹)))⁻¹,
+        rewrite [ap_inv g,inv_inv],
+        apply pushout.glue_square }
+    end end
+
+  end
+
+  /- version giving the equivalence -/
+  section
+    variables {TL BL TR : Type} (f : TL → BL) (g : TL → TR)
+              {TL' BL' TR' : Type} (f' : TL' → BL') (g' : TL' → TR')
+              (tl : TL ≃ TL') (bl : BL ≃ BL') (tr : TR ≃ TR')
+              (fh : bl ∘ f ~ f' ∘ tl) (gh : tr ∘ g ~ g' ∘ tl)
+    include fh gh
+
+    protected definition equiv : pushout f g ≃ pushout f' g' :=
+    equiv.mk (pushout.functor f g f' g' tl bl tr fh gh) _
+  end
 end pushout

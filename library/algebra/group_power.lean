@@ -40,7 +40,7 @@ definition monoid.pow (a : A) : ℕ → A
 | 0     := 1
 | (n+1) := a * monoid.pow n
 
-definition monoid_has_pow_nat [reducible] [instance] : has_pow_nat A :=
+definition monoid_has_pow_nat [instance] : has_pow_nat A :=
 has_pow_nat.mk monoid.pow
 
 theorem pow_zero (a : A) : a^0 = 1 := rfl
@@ -71,7 +71,7 @@ theorem one_pow : ∀ n : ℕ, 1^n = (1:A)
 theorem pow_add (a : A) (m n : ℕ) : a^(m + n) = a^m * a^n :=
 begin
   induction n with n ih,
-    {rewrite [nat.add_zero, pow_zero, mul_one]},
+    {krewrite [nat.add_zero, pow_zero, mul_one]},
   rewrite [add_succ, *pow_succ', ih, mul.assoc]
 end
 
@@ -108,7 +108,7 @@ theorem inv_pow (a : A) : ∀n, (a⁻¹)^n = (a^n)⁻¹
 | (succ n) := by rewrite [pow_succ, pow_succ', inv_pow, mul_inv]
 
 theorem pow_sub (a : A) {m n : ℕ} (H : m ≥ n) : a^(m - n) = a^m * (a^n)⁻¹ :=
-assert H1 : m - n + n = m, from nat.sub_add_cancel H,
+have H1 : m - n + n = m, from nat.sub_add_cancel H,
 have H2 : a^(m - n) * a^n = a^m, by rewrite [-pow_add, H1],
 eq_mul_inv_of_mul_eq H2
 
@@ -132,7 +132,7 @@ private lemma gpow_add_aux (a : A) (m n : nat) :
   gpow a ((of_nat m) + -[1+n]) = gpow a (of_nat m) * gpow a (-[1+n]) :=
 or.elim (nat.lt_or_ge m (nat.succ n))
   (assume H : (m < nat.succ n),
-    assert H1 : (#nat nat.succ n - m > nat.zero), from nat.sub_pos_of_lt H,
+    have H1 : (#nat nat.succ n - m > nat.zero), from nat.sub_pos_of_lt H,
     calc
       gpow a ((of_nat m) + -[1+n]) = gpow a (sub_nat_nat m (nat.succ n))  : rfl
         ... = gpow a (-[1+ nat.pred (nat.sub (nat.succ n) m)])            : {sub_nat_nat_of_lt H}
@@ -171,7 +171,7 @@ include s
 theorem pow_pos {a : A} (H : a > 0) (n : ℕ) : a ^ n > 0 :=
   begin
     induction n,
-    rewrite pow_zero,
+    krewrite pow_zero,
     apply zero_lt_one,
     rewrite pow_succ',
     apply mul_pos,
@@ -181,7 +181,7 @@ theorem pow_pos {a : A} (H : a > 0) (n : ℕ) : a ^ n > 0 :=
 theorem pow_ge_one_of_ge_one {a : A} (H : a ≥ 1) (n : ℕ) : a ^ n ≥ 1 :=
   begin
     induction n,
-    rewrite pow_zero,
+    krewrite pow_zero,
     apply le.refl,
     rewrite [pow_succ', -mul_one 1],
     apply mul_le_mul v_0 H zero_le_one,

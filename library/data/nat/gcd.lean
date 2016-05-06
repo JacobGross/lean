@@ -28,9 +28,9 @@ definition gcd.F : Π (p₁ : nat × nat), (Π p₂ : nat × nat, p₂ ≺ p₁ 
 
 definition gcd (x y : nat) := fix gcd.F (x, y)
 
-theorem gcd_zero_right (x : nat) : gcd x 0 = x := rfl
+theorem gcd_zero_right [simp] (x : nat) : gcd x 0 = x := rfl
 
-theorem gcd_succ (x y : nat) : gcd x (succ y) = gcd (succ y) (x % succ y) :=
+theorem gcd_succ [simp] (x y : nat) : gcd x (succ y) = gcd (succ y) (x % succ y) :=
 well_founded.fix_eq gcd.F (x, succ y)
 
 theorem gcd_one_right (n : ℕ) : gcd n 1 = 1 :=
@@ -306,7 +306,7 @@ calc
 theorem not_coprime_of_dvd_of_dvd {m n d : ℕ} (dgt1 : d > 1) (Hm : d ∣ m) (Hn : d ∣ n) :
   ¬ coprime m n :=
 assume co : coprime m n,
-assert d ∣ gcd m n, from dvd_gcd Hm Hn,
+have d ∣ gcd m n, from dvd_gcd Hm Hn,
 have d ∣ 1, by rewrite [↑coprime at co, co at this]; apply this,
 have d ≤ 1, from le_of_dvd dec_trivial this,
 show false, from not_lt_of_ge `d ≤ 1` `d > 1`

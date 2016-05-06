@@ -20,7 +20,7 @@ namespace sigma
 
   /- Paths in a sigma-type -/
 
-  protected definition eta : Π (u : Σa, B a), ⟨u.1 , u.2⟩ = u
+  protected definition eta [unfold 3] : Π (u : Σa, B a), ⟨u.1 , u.2⟩ = u
   | eta ⟨u₁, u₂⟩ := idp
 
   definition eta2 : Π (u : Σa b, C a b), ⟨u.1, u.2.1, u.2.2⟩ = u
@@ -63,7 +63,7 @@ namespace sigma
   ap eq_pr1 r
 
   definition eq2_pr2 {p q : u = v} (r : p = q) : p..2 =[eq2_pr1 r] q..2 :=
-  !pathover_ap (apdo eq_pr2 r)
+  !pathover_ap (apd eq_pr2 r)
 
   definition tr_pr1_sigma_eq {B' : A → Type} (p : u.1 = v.1) (q : u.2 =[p] v.2)
     : transport (λx, B' x.1) (sigma_eq p q) = transport B' p :=
@@ -209,30 +209,29 @@ namespace sigma
   definition sigma_functor [unfold 7] (u : Σa, B a) : Σa', B' a' :=
   ⟨f u.1, g u.1 u.2⟩
 
-  definition total [reducible] [unfold 5] {B' : A → Type} (g : Πa, B a → B' a) (u : Σa, B a)
-    : Σa', B' a' :=
-  sigma_functor id g u
+  definition total [reducible] [unfold 5] {B' : A → Type} (g : Πa, B a → B' a) : (Σa, B a) → (Σa, B' a) :=
+  sigma_functor id g
 
   /- Equivalences -/
-  definition is_equiv_sigma_functor [H1 : is_equiv f] [H2 : Π a, is_equiv (g a)]
+  definition is_equiv_sigma_functor [constructor] [H1 : is_equiv f] [H2 : Π a, is_equiv (g a)]
       : is_equiv (sigma_functor f g) :=
   adjointify (sigma_functor f g)
              (sigma_functor f⁻¹ (λ(a' : A') (b' : B' a'),
                ((g (f⁻¹ a'))⁻¹ (transport B' (right_inv f a')⁻¹ b'))))
-  begin
+  abstract begin
     intro u', induction u' with a' b',
     apply sigma_eq (right_inv f a'),
     rewrite [▸*,right_inv (g (f⁻¹ a')),▸*],
     apply tr_pathover
-  end
-  begin
+  end end
+  abstract begin
     intro u,
     induction u with a b,
     apply (sigma_eq (left_inv f a)),
     apply pathover_of_tr_eq,
     rewrite [▸*,adj f,-(fn_tr_eq_tr_fn (left_inv f a) (λ a, (g a)⁻¹)),
              ▸*,tr_compose B' f,tr_inv_tr,left_inv]
-  end
+  end end
 
   definition sigma_equiv_sigma_of_is_equiv [constructor]
     [H1 : is_equiv f] [H2 : Π a, is_equiv (g a)] : (Σa, B a) ≃ (Σa', B' a') :=
@@ -242,7 +241,7 @@ namespace sigma
       (Σa, B a) ≃ (Σa', B' a') :=
   sigma_equiv_sigma_of_is_equiv (to_fun Hf) (λ a, to_fun (Hg a))
 
-  definition sigma_equiv_sigma_id [constructor] {B' : A → Type} (Hg : Π a, B a ≃ B' a)
+  definition sigma_equiv_sigma_right [constructor] {B' : A → Type} (Hg : Π a, B a ≃ B' a)
     : (Σa, B a) ≃ Σa, B' a :=
   sigma_equiv_sigma equiv.refl Hg
 
@@ -280,8 +279,8 @@ namespace sigma
   equiv.MK
     (λu, (center_eq u.1)⁻¹ ▸ u.2)
     (λb, ⟨!center, b⟩)
-    (λb, ap (λx, x ▸ b) !hprop_eq_of_is_contr)
-    (λu, sigma_eq !center_eq !tr_pathover)
+    abstract (λb, ap (λx, x ▸ b) !prop_eq_of_is_contr) end
+    abstract (λu, sigma_eq !center_eq !tr_pathover) end
 
   /- Associativity -/
 
@@ -291,16 +290,16 @@ namespace sigma
   equiv.mk _ (adjointify
     (λav, ⟨⟨av.1, av.2.1⟩, av.2.2⟩)
     (λuc, ⟨uc.1.1, uc.1.2, !sigma.eta⁻¹ ▸ uc.2⟩)
-    begin intro uc, induction uc with u c, induction u, reflexivity end
-    begin intro av, induction av with a v, induction v, reflexivity end)
+    abstract begin intro uc, induction uc with u c, induction u, reflexivity end end
+    abstract begin intro av, induction av with a v, induction v, reflexivity end end)
 
   open prod prod.ops
   definition assoc_equiv_prod [constructor] (C : (A × A') → Type) : (Σa a', C (a,a')) ≃ (Σu, C u) :=
   equiv.mk _ (adjointify
     (λav, ⟨(av.1, av.2.1), av.2.2⟩)
     (λuc, ⟨pr₁ (uc.1), pr₂ (uc.1), !prod.eta⁻¹ ▸ uc.2⟩)
-    proof (λuc, destruct uc (λu, prod.destruct u (λa b c, idp))) qed
-    proof (λav, destruct av (λa v, destruct v (λb c, idp))) qed)
+    abstract proof (λuc, destruct uc (λu, prod.destruct u (λa b c, idp))) qed end
+    abstract proof (λav, destruct av (λa v, destruct v (λb c, idp))) qed end)
 
   /- Symmetry -/
 
@@ -327,6 +326,15 @@ namespace sigma
     (Σ(a : A), B) ≃ A × B       : equiv_prod
               ... ≃ B × A       : prod_comm_equiv
               ... ≃ Σ(b : B), A : equiv_prod
+
+  definition sigma_assoc_comm_equiv {A : Type} (B C : A → Type)
+    : (Σ(v : Σa, B a), C v.1) ≃ (Σ(u : Σa, C a), B u.1) :=
+  calc    (Σ(v : Σa, B a), C v.1)
+        ≃ (Σa (b : B a), C a)     : !sigma_assoc_equiv⁻¹ᵉ
+    ... ≃ (Σa, B a × C a)         : sigma_equiv_sigma_right (λa, !equiv_prod)
+    ... ≃ (Σa, C a × B a)         : sigma_equiv_sigma_right (λa, !prod_comm_equiv)
+    ... ≃ (Σa (c : C a), B a)     : sigma_equiv_sigma_right (λa, !equiv_prod)
+    ... ≃ (Σ(u : Σa, C a), B u.1) : sigma_assoc_equiv
 
   /- Interaction with other type constructors -/
 
@@ -359,7 +367,10 @@ namespace sigma
   begin
     fapply equiv.MK,
     { intro v,
-      induction v with p b, induction p: append (apply inl) (apply inr); constructor; assumption },
+      induction v with p b,
+      induction p,
+      { apply inl, constructor, assumption },
+      { apply inr, constructor, assumption }},
     { intro p, induction p with v v: induction v; constructor; assumption},
     { intro p, induction p with v v: induction v; reflexivity},
     { intro v, induction v with p b, induction p: reflexivity},
@@ -370,12 +381,29 @@ namespace sigma
   begin
     fapply equiv.MK,
     { intro v,
-      induction v with a p, induction p: append (apply inl) (apply inr); constructor; assumption},
+      induction v with a p,
+      induction p,
+      { apply inl, constructor, assumption},
+      { apply inr, constructor, assumption}},
     { intro p,
-      induction p with v v: induction v; constructor; append (apply inl) (apply inr); assumption},
+      induction p with v v,
+      { induction v, constructor, apply inl, assumption },
+      { induction v, constructor, apply inr, assumption }},
     { intro p, induction p with v v: induction v; reflexivity},
     { intro v, induction v with a p, induction p: reflexivity},
   end
+
+  definition sigma_sigma_eq_right {A : Type} (a : A) (P : Π(b : A), a = b → Type)
+    : (Σ(b : A) (p : a = b), P b p) ≃ P a idp :=
+  calc
+    (Σ(b : A) (p : a = b), P b p) ≃ (Σ(v : Σ(b : A), a = b), P v.1 v.2) : sigma_assoc_equiv
+      ... ≃ P a idp : !sigma_equiv_of_is_contr_left
+
+  definition sigma_sigma_eq_left {A : Type} (a : A) (P : Π(b : A), b = a → Type)
+    : (Σ(b : A) (p : b = a), P b p) ≃ P a idp :=
+  calc
+    (Σ(b : A) (p : b = a), P b p) ≃ (Σ(v : Σ(b : A), b = a), P v.1 v.2) : sigma_assoc_equiv
+      ... ≃ P a idp : !sigma_equiv_of_is_contr_left
 
   /- ** Universal mapping properties -/
   /- *** The positive universal property. -/
@@ -412,30 +440,30 @@ namespace sigma
   equiv.mk sigma.coind_unc _
   end
 
-  /- Subtypes (sigma types whose second components are hprops) -/
+  /- Subtypes (sigma types whose second components are props) -/
 
-  definition subtype [reducible] {A : Type} (P : A → Type) [H : Πa, is_hprop (P a)] :=
+  definition subtype [reducible] {A : Type} (P : A → Type) [H : Πa, is_prop (P a)] :=
   Σ(a : A), P a
   notation [parsing_only] `{` binder `|` r:(scoped:1 P, subtype P) `}` := r
 
   /- To prove equality in a subtype, we only need equality of the first component. -/
-  definition subtype_eq [H : Πa, is_hprop (B a)] {u v : {a | B a}} : u.1 = v.1 → u = v :=
+  definition subtype_eq [H : Πa, is_prop (B a)] {u v : {a | B a}} : u.1 = v.1 → u = v :=
   sigma_eq_unc ∘ inv pr1
 
-  definition is_equiv_subtype_eq [H : Πa, is_hprop (B a)] (u v : {a | B a})
+  definition is_equiv_subtype_eq [H : Πa, is_prop (B a)] (u v : {a | B a})
       : is_equiv (subtype_eq : u.1 = v.1 → u = v) :=
   !is_equiv_compose
   local attribute is_equiv_subtype_eq [instance]
 
-  definition equiv_subtype [H : Πa, is_hprop (B a)] (u v : {a | B a}) : (u.1 = v.1) ≃ (u = v) :=
+  definition equiv_subtype [H : Πa, is_prop (B a)] (u v : {a | B a}) : (u.1 = v.1) ≃ (u = v) :=
   equiv.mk !subtype_eq _
 
-  definition subtype_eq_inv {A : Type} {B : A → Type} [H : Πa, is_hprop (B a)] (u v : Σa, B a)
+  definition subtype_eq_inv {A : Type} {B : A → Type} [H : Πa, is_prop (B a)] (u v : Σa, B a)
     : u = v → u.1 = v.1 :=
   subtype_eq⁻¹ᶠ
 
   local attribute subtype_eq_inv [reducible]
-  definition is_equiv_subtype_eq_inv {A : Type} {B : A → Type} [H : Πa, is_hprop (B a)]
+  definition is_equiv_subtype_eq_inv {A : Type} {B : A → Type} [H : Πa, is_prop (B a)]
     (u v : Σa, B a) : is_equiv (subtype_eq_inv u v) :=
   _
 
@@ -452,9 +480,9 @@ namespace sigma
       exact IH _ _ _ _}
   end
 
-  theorem is_trunc_subtype (B : A → hprop) (n : trunc_index)
+  theorem is_trunc_subtype (B : A → Prop) (n : trunc_index)
       [HA : is_trunc (n.+1) A] : is_trunc (n.+1) (Σa, B a) :=
-  @(is_trunc_sigma B (n.+1)) _ (λa, !is_trunc_succ_of_is_hprop)
+  @(is_trunc_sigma B (n.+1)) _ (λa, !is_trunc_succ_of_is_prop)
 
 end sigma
 

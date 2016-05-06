@@ -21,12 +21,15 @@ Author: Leonardo de Moura
 #include "library/attribute_manager.h"
 #include "library/idx_metavar.h"
 #include "library/blast/options.h"
+#include "library/blast/trace.h"
 #include "library/blast/blast.h"
 #include "library/blast/forward/pattern.h"
 #include "library/blast/forward/forward_lemmas.h"
 
 namespace lean {
 /*
+TODO(Leo): we need to revise this module (e.g., support for HoTT).
+
 Step 1: Selecting which variables we should track.
 
 Given (H : Pi (a_1 : A_1) ... (a_n : A_n), B) where B is not a Pi,
@@ -41,8 +44,9 @@ patterns used by heuristic instantiation.
      a_i is NOT trackable.
      Reason: we can infer a_i from a_j using type inference.
 
-  b) a_i is a non dependent proposition -> a_i is NOT trackable.
-     Reason: we can leave a_i as hypothesis whenever we instantiate H.
+  b) a_i is a proposition -> a_i is NOT trackable.
+     Reason: we leave a_i as hypothesis whenever we instantiate H,
+     and rely on unit propagate to discharge it.
 
   c) a_i is instance implicit -> a_i is NOT trackable.
      We should use type class resolution to infer a_i.
@@ -54,7 +58,7 @@ We define the set of "residue" hypotheses a_i as the least fix point of
   a) a_i is a proposition
   b) a_i is not inst_implicit
   c) a_i is not trackable
-  d) there is no j > i s.t. a_j is not residue
+  d) a_i is not a proposition and there is no j > i s.t. a_j is not residue
      and type(a_j) depends on a_i, and type(a_i) is not higher-order
 
 That is, if a_i is a "residue" hypothesis, we cannot infer it
@@ -188,7 +192,8 @@ namespace blast {
 typedef rb_tree<unsigned, unsigned_cmp> idx_metavar_set;
 
 static bool is_higher_order(tmp_type_context & ctx, expr const & e) {
-    return is_pi(ctx.relaxed_whnf(ctx.infer(e)));
+    /* Remark: it is too expensive to use ctx.relaxed_whnf here. */
+    return is_pi(ctx.whnf(ctx.infer(e)));
 }
 
 /** \brief Given type of the form (Pi (a_1 : A_1) ... (a_n : A_n), B) (or reducible to something of this form),
@@ -215,10 +220,9 @@ expr extract_trackable(tmp_type_context & ctx, expr const & type,
         bool is_inst_implicit = binding_info(it).is_inst_implicit();
         inst_implicit_flags.push_back(is_inst_implicit);
         bool is_prop          = ctx.is_prop(binding_domain(it));
-        bool dep              = !closed(binding_body(it));
         if (!is_inst_implicit) {
             unsigned midx = to_meta_idx(new_mvar);
-            if (is_prop && !dep)
+            if (is_prop)
                 residue.insert(midx);
             else
                 trackable.insert(midx);
@@ -288,6 +292,9 @@ struct mk_hi_lemma_fn {
     unsigned           m_num_uvars;
     unsigned           m_priority;
     unsigned           m_max_steps;
+    /* If m_simp is true, the pattern inference procedure assumes the given lemma is a [simp] lemma.
+       That is, the conclusion is of the form (t ~ s), and it will try to use t as a pattern. */
+    bool               m_simp;
 
     buffer<expr>       m_mvars;
     idx_metavar_set    m_trackable;
@@ -295,9 +302,10 @@ struct mk_hi_lemma_fn {
     unsigned           m_num_steps;
 
     mk_hi_lemma_fn(tmp_type_context & ctx, expr const & H,
-                   unsigned num_uvars, unsigned prio, unsigned max_steps):
+                   unsigned num_uvars, unsigned prio, unsigned max_steps, bool simp):
         m_ctx(ctx), m_no_patterns(no_pattern_ext::get_state(ctx.env())),
-        m_H(H), m_num_uvars(num_uvars), m_priority(prio), m_max_steps(max_steps) {}
+        m_H(H), m_num_uvars(num_uvars), m_priority(prio), m_max_steps(max_steps),
+        m_simp(simp) {}
 
     struct candidate {
         expr            m_expr;
@@ -335,10 +343,12 @@ struct mk_hi_lemma_fn {
             });
     }
 
-    candidate_set collect_pattern_hints(buffer<expr> const & mvars, expr const & B) {
+    candidate_set collect_pattern_hints(buffer<expr> const & mvars, buffer<expr> const & residue, expr const & B) {
         candidate_set s;
         for (expr const & mvar : mvars)
             collect_pattern_hints(m_ctx.infer(mvar), s);
+        for (expr const & r : residue)
+            collect_pattern_hints(m_ctx.infer(r), s);
         collect_pattern_hints(B, s);
         return s;
     }
@@ -357,6 +367,9 @@ struct mk_hi_lemma_fn {
         case expr_kind::Meta:   case expr_kind::Local:
         case expr_kind::Pi:
             return candidate_set();
+        case expr_kind::Let:
+            // let-expressions must be unfolded
+            lean_unreachable();
         case expr_kind::Lambda:
             if (has_idx_metavar(a))
                 return candidate_set(candidate(a));
@@ -410,7 +423,14 @@ struct mk_hi_lemma_fn {
 
     candidate_set collect(expr const & a) {
         m_candidates = candidate_set();
-        save_candidates(collect_core(a));
+        if (m_simp) {
+            name R; expr lhs, rhs;
+            if (is_relation_app(a, R, lhs, rhs)) {
+                m_candidates.insert(candidate(lhs));
+            }
+        } else {
+            save_candidates(collect_core(a));
+        }
         return m_candidates;
     }
 
@@ -557,9 +577,9 @@ struct mk_hi_lemma_fn {
         lean_assert(m_mvars.size() == inst_implicit_flags.size());
         buffer<expr> subst;
         buffer<expr> residue_locals;
-        candidate_set hints = collect_pattern_hints(m_mvars, B);
         expr proof  = mk_proof(residue_locals, subst);
         B           = replace_mvars(B, subst);
+        candidate_set hints = collect_pattern_hints(m_mvars, residue_locals, B);
         list<multi_pattern> mps;
         if (!hints.empty()) {
             mps = mk_multi_patterns_using(hints, false);
@@ -571,7 +591,7 @@ struct mk_hi_lemma_fn {
             candidate_set B_candidates = collect(B);
             if (auto r1 = mk_multi_patterns_using(B_candidates, true)) {
                 mps = r1;
-            } else {
+            } else if (!m_simp) {
                 candidate_set residue_candidates;
                 for (expr const & r : residue_locals) {
                     residue_candidates.merge(collect(m_ctx.infer(r)));
@@ -598,20 +618,21 @@ struct mk_hi_lemma_fn {
         r.m_is_inst_implicit = to_list(inst_implicit_flags);
         r.m_prop             = m_ctx.infer(proof);
         r.m_proof            = proof;
+        r.m_expr             = m_H;
         return r;
     }
 };
 
 hi_lemma mk_hi_lemma_core(tmp_type_context & ctx, expr const & H, unsigned num_uvars,
-                          unsigned priority, unsigned max_steps) {
+                          unsigned priority, unsigned max_steps, bool simp) {
     try {
         bool erase_hints = false;
-        return mk_hi_lemma_fn(ctx, H, num_uvars, priority, max_steps)(erase_hints);
+        return mk_hi_lemma_fn(ctx, H, num_uvars, priority, max_steps, simp)(erase_hints);
     } catch (mk_hi_lemma_fn::try_again_without_hints &) {
         ctx.clear();
         try {
             bool erase_hints = true;
-            return mk_hi_lemma_fn(ctx, H, num_uvars, priority, max_steps)(erase_hints);
+            return mk_hi_lemma_fn(ctx, H, num_uvars, priority, max_steps, simp)(erase_hints);
         } catch (mk_hi_lemma_fn::try_again_without_hints &) {
             lean_unreachable();
         }
@@ -621,10 +642,11 @@ hi_lemma mk_hi_lemma_core(tmp_type_context & ctx, expr const & H, unsigned num_u
 hi_lemma mk_hi_lemma(expr const & H) {
     blast_tmp_type_context ctx;
     unsigned max_steps = get_config().m_pattern_max_steps;
-    return mk_hi_lemma_core(*ctx, H, 0, LEAN_DEFAULT_PRIORITY, max_steps);
+    bool simp = false;
+    return mk_hi_lemma_core(*ctx, H, 0, LEAN_DEFAULT_PRIORITY, max_steps, simp);
 }
 
-hi_lemma mk_hi_lemma(name const & c, unsigned priority) {
+hi_lemma mk_hi_lemma(name const & c, unsigned priority, bool simp) {
     blast_tmp_type_context ctx;
     unsigned max_steps = get_config().m_pattern_max_steps;
     declaration const & d = env().get(c);
@@ -633,7 +655,17 @@ hi_lemma mk_hi_lemma(name const & c, unsigned priority) {
     for (unsigned i = 0; i < num_us; i++)
         us.push_back(ctx->mk_uvar());
     expr H          = mk_constant(c, to_list(us));
-    return mk_hi_lemma_core(*ctx, H, num_us, priority, max_steps);
+    return mk_hi_lemma_core(*ctx, H, num_us, priority, max_steps, simp);
+}
+
+hi_lemma mk_hi_lemma(name const & c, unsigned priority) {
+    bool simp = false;
+    return mk_hi_lemma(c, priority, simp);
+}
+
+hi_lemma mk_hi_simp_lemma(name const & c, unsigned priority) {
+    bool simp = true;
+    return mk_hi_lemma(c, priority, simp);
 }
 }
 

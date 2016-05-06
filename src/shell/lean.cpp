@@ -16,25 +16,25 @@ Author: Leonardo de Moura
 #include "util/sstream.h"
 #include "util/interrupt.h"
 #include "util/memory.h"
-#include "util/script_state.h"
 #include "util/thread.h"
-#include "util/thread_script_state.h"
 #include "util/lean_path.h"
 #include "util/file_lock.h"
 #include "util/sexpr/options.h"
 #include "util/sexpr/option_declarations.h"
 #include "kernel/environment.h"
 #include "kernel/kernel_exception.h"
+#include "kernel/type_checker.h"
 #include "kernel/formatter.h"
 #include "library/standard_kernel.h"
 #include "library/hott_kernel.h"
 #include "library/module.h"
 #include "library/flycheck.h"
+#include "library/type_context.h"
 #include "library/io_state_stream.h"
 #include "library/definition_cache.h"
 #include "library/declaration_index.h"
 #include "library/export.h"
-#include "library/error_handling/error_handling.h"
+#include "library/error_handling.h"
 #include "frontends/lean/parser.h"
 #include "frontends/lean/pp.h"
 #include "frontends/lean/server.h"
@@ -46,7 +46,6 @@ Author: Leonardo de Moura
 #include "version.h"
 #include "githash.h" // NOLINT
 
-using lean::script_state;
 using lean::unreachable_reached;
 using lean::environment;
 using lean::io_state;
@@ -54,8 +53,6 @@ using lean::io_state_stream;
 using lean::regular;
 using lean::mk_environment;
 using lean::mk_hott_environment;
-using lean::set_environment;
-using lean::set_io_state;
 using lean::definition_cache;
 using lean::pos_info;
 using lean::pos_info_provider;
@@ -68,8 +65,10 @@ using lean::module_name;
 using lean::simple_pos_info_provider;
 using lean::shared_file_lock;
 using lean::exclusive_file_lock;
+using lean::default_type_context;
+using lean::type_checker;
 
-enum class input_kind { Unspecified, Lean, HLean, Lua, Trace };
+enum class input_kind { Unspecified, Lean, HLean, Trace };
 
 static void on_ctrl_c(int ) {
     lean::request_interrupt();
@@ -95,7 +94,6 @@ static void display_help(std::ostream & out) {
     std::cout << "                    with unknown extension (default)\n";
     std::cout << "  --hlean           use parser for Lean default input format \n";
     std::cout << "                    and use HoTT compatible kernel for files, with unknown extension\n";
-    std::cout << "  --lua             use Lua parser for files with unknown extension\n";
     std::cout << "  --server-trace    use lean server trace parser for files with unknown extension\n";
     std::cout << "Miscellaneous:\n";
     std::cout << "  --help -h         display this message\n";
@@ -103,9 +101,6 @@ static void display_help(std::ostream & out) {
     std::cout << "  --githash         display the git commit hash number used to build this binary\n";
     std::cout << "  --path            display the path used for finding Lean libraries and extensions\n";
     std::cout << "  --output=file -o  save the final environment in binary format in the given file\n";
-    std::cout << "  --luahook=num -k  how often the Lua interpreter checks the interrupted flag,\n";
-    std::cout << "                    it is useful for interrupting non-terminating user scripts,\n";
-    std::cout << "                    0 means 'do not check'.\n";
     std::cout << "  --trust=num -t    trust level (default: max) 0 means do not trust any macro,\n"
               << "                    and type check all imported modules\n";
     std::cout << "  --discard -r      discard the proof of imported theorems after checking\n";
@@ -132,13 +127,13 @@ static void display_help(std::ostream & out) {
     std::cout << "  --debug=tag       enable assertions with the given tag\n";
         )
     std::cout << "  -D name=value     set a configuration option (see set_option command)\n";
-    std::cout << "  --dir=directory   display information about identifier or token in the given posivition\n";
+    std::cout << "  --dir=directory   base directory for relative imports\n";
     std::cout << "Frontend query interface:\n";
     std::cout << "  --line=value      line number for query\n";
     std::cout << "  --col=value       column number for query\n";
     std::cout << "  --goal            display goal at close to given position\n";
-    std::cout << "  --hole            display type of the \"hole\" in the given posivition\n";
-    std::cout << "  --info            display information about identifier or token in the given posivition\n";
+    std::cout << "  --hole            display type of the \"hole\" in the given position\n";
+    std::cout << "  --info            display information about identifier or token in the given position\n";
     std::cout << "Exporting data:\n";
     std::cout << "  --export=file -E  export final environment as textual low-level file\n";
     std::cout << "  --export-all=file -A  export final environment (and all dependencies) as textual low-level file\n";
@@ -163,10 +158,8 @@ static struct option g_long_options[] = {
     {"help",         no_argument,       0, 'h'},
     {"lean",         no_argument,       0, 'l'},
     {"hlean",        no_argument,       0, 'H'},
-    {"lua",          no_argument,       0, 'u'},
     {"server-trace", no_argument,       0, 'R'},
     {"path",         no_argument,       0, 'p'},
-    {"luahook",      required_argument, 0, 'k'},
     {"githash",      no_argument,       0, 'g'},
     {"output",       required_argument, 0, 'o'},
     {"export",       required_argument, 0, 'E'},
@@ -310,14 +303,8 @@ int main(int argc, char ** argv) {
         case 'H':
             default_k = input_kind::HLean;
             break;
-        case 'u':
-            default_k = input_kind::Lua;
-            break;
         case 'R':
             default_k = input_kind::Trace;
-            break;
-        case 'k':
-            script_state::set_check_interrupt_freq(atoi(optarg));
             break;
         case 'p':
             if (default_k == input_kind::HLean)
@@ -458,9 +445,6 @@ int main(int argc, char ** argv) {
 
     environment env = has_hlean ? mk_hott_environment(trust_lvl) : mk_environment(trust_lvl);
     io_state ios(opts, lean::mk_pretty_formatter_factory());
-    script_state S = lean::get_thread_script_state();
-    set_environment set1(S, env);
-    set_io_state    set2(S, ios);
     definition_cache   cache;
     definition_cache * cache_ptr = nullptr;
     if (read_cache) {
@@ -472,15 +456,15 @@ int main(int argc, char ** argv) {
                 cache.load(in);
         } catch (lean::throwable & ex) {
             cache_ptr = nullptr;
-            auto out = regular(env, ios);
             // I'm using flycheck_error instead off flycheck_warning because
             // the :error-patterns at lean-flycheck.el do not work after
             // I add a rule for FLYCHECK_WARNING.
             // Same for display_error_pos vs display_warning_pos.
-            lean::flycheck_error warn(out);
+            lean::flycheck_error warn(ios);
             if (optind < argc)
-                display_error_pos(out, argv[optind], 1, 0);
-            out << "failed to load cache file '" << cache_name << "', "
+                display_error_pos(ios.get_regular_stream(), ios.get_options(), argv[optind], 1, 0);
+            ios.get_regular_stream()
+                << "failed to load cache file '" << cache_name << "', "
                 << ex.what() << ". cache is going to be ignored\n";
         }
     }
@@ -500,8 +484,6 @@ int main(int argc, char ** argv) {
                         k = input_kind::Lean;
                     } else if (strcmp(ext, "hlean") == 0) {
                         k = input_kind::HLean;
-                    } else if (strcmp(ext, "lua") == 0) {
-                        k = input_kind::Lua;
                     }
                 }
                 switch (k) {
@@ -515,9 +497,6 @@ int main(int argc, char ** argv) {
                         ok = false;
                     }
                     break;
-                case input_kind::Lua:
-                    lean::system_import(argv[i]);
-                    break;
                 case input_kind::Trace:
                     ok = lean::parse_server_trace(env, ios, argv[i], base_dir);
                     break;
@@ -528,7 +507,9 @@ int main(int argc, char ** argv) {
             } catch (lean::exception & ex) {
                 simple_pos_info_provider pp(argv[i]);
                 ok = false;
-                lean::display_error(diagnostic(env, ios), &pp, ex);
+                default_type_context tc(env, ios.get_options());
+                auto out = diagnostic(env, ios, tc);
+                lean::display_error(out, &pp, ex);
             }
         }
         if (ok && server && (default_k == input_kind::Lean || default_k == input_kind::HLean)) {
@@ -547,7 +528,9 @@ int main(int argc, char ** argv) {
             exclusive_file_lock index_lock(index_name);
             std::shared_ptr<lean::file_output_channel> out(new lean::file_output_channel(index_name.c_str()));
             ios.set_regular_channel(out);
-            index.save(regular(env, ios));
+            type_checker tc(env);
+            auto strm = regular(env, ios, tc.get_type_context());
+            index.save(strm);
         }
         if (export_objects && ok) {
             exclusive_file_lock output_lock(output);
@@ -566,7 +549,9 @@ int main(int argc, char ** argv) {
         }
         return ok ? 0 : 1;
     } catch (lean::throwable & ex) {
-        lean::display_error(diagnostic(env, ios), nullptr, ex);
+        default_type_context tc(env, ios.get_options());
+        auto out = diagnostic(env, ios, tc);
+        lean::display_error(out, nullptr, ex);
     } catch (std::bad_alloc & ex) {
         std::cerr << "out of memory" << std::endl;
         return 1;

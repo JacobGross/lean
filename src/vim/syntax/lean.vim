@@ -24,7 +24,7 @@ syn case match
 " keywords
 syn keyword leanKeyword import prelude tactic_hint protected private noncomputable
 syn keyword leanKeyword definition renaming hiding exposing parameter parameters
-syn keyword leanKeyword begin "begin+" proof qed conjecture constant constants hypothesis lemma
+syn keyword leanKeyword begin proof qed conjecture constant constants hypothesis lemma
 syn keyword leanKeyword corollary variable variables premise premises theory print theorem proposition
 syn keyword leanKeyword example abbreviation abstract open as export override axiom axioms inductive
 syn keyword leanKeyword with structure record universe universes alias help environment options
@@ -46,7 +46,7 @@ syn keyword leanConstant → ∃ ∀
 " modifiers (pragmas)
 syn keyword leanModifier contained containedin=leanBracketEncl persistent notation visible instance trans_instance class parsing_only
 syn keyword leanModifier contained containedin=leanBracketEncl coercion unfold_full constructor reducible irreducible semireducible
-syn keyword leanModifier contained containedin=leanBracketEncl quasireducible wf whnf multiple_instances none decls declarations coercions
+syn keyword leanModifier contained containedin=leanBracketEncl wf whnf multiple_instances none decls declarations coercions
 syn keyword leanModifier contained containedin=leanBracketEncl classes symm subst refl trans simp congr notations abbreviations
 syn keyword leanModifier contained containedin=leanBracketEncl begin_end_hints tactic_hints reduce_hints unfold_hints aliases eqv
 syn keyword leanModifier contained containedin=leanBracketEncl localrefinfo

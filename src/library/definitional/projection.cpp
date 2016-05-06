@@ -5,6 +5,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Leonardo de Moura
 */
 #include <string>
+#include "util/fresh_name.h"
 #include "util/sstream.h"
 #include "kernel/abstract.h"
 #include "kernel/type_checker.h"
@@ -186,32 +187,32 @@ environment mk_projections(environment const & env, name const & n, buffer<name>
     //   proj_i A (c : C A) : B_i[A, (proj_1 A n), ..., (proj_{i-1} A n)]
     //     C.rec A (fun (x : C A), B_i[A, ...]) (fun (x_1 ... x_n), x_i) c
     auto p = get_nparam_intro_rule(env, n);
-    name_generator ngen;
     unsigned nparams             = p.first;
     inductive::intro_rule intro  = p.second;
     expr intro_type              = inductive::intro_rule_type(intro);
     name rec_name                = inductive::get_elim_name(n);
     declaration ind_decl         = env.get(n);
-    if (env.impredicative() && is_prop(ind_decl.get_type()))
-        throw exception(sstream() << "projection generation, '" << n << "' is a proposition");
     declaration rec_decl         = env.get(rec_name);
+    bool is_predicate            = env.impredicative() && is_prop(ind_decl.get_type());
+    bool elim_to_prop            = rec_decl.get_num_univ_params() == ind_decl.get_num_univ_params();
+    bool dep_elim                = inductive::has_dep_elim(env, n);
     level_param_names lvl_params = ind_decl.get_univ_params();
     levels lvls                  = param_names_to_levels(lvl_params);
     buffer<expr> params; // datatype parameters
     for (unsigned i = 0; i < nparams; i++) {
         if (!is_pi(intro_type))
             throw_ill_formed(n);
-        expr param = mk_local(ngen.next(), binding_name(intro_type), binding_domain(intro_type), binder_info());
+        expr param = mk_local(mk_fresh_name(), binding_name(intro_type), binding_domain(intro_type), binder_info());
         intro_type = instantiate(binding_body(intro_type), param);
         params.push_back(param);
     }
     expr C_A                     = mk_app(mk_constant(n, lvls), params);
     binder_info c_bi             = inst_implicit ? mk_inst_implicit_binder_info() : binder_info();
-    expr c                       = mk_local(ngen.next(), name("c"), C_A, c_bi);
+    expr c                       = mk_local(mk_fresh_name(), name("c"), C_A, c_bi);
     buffer<expr> intro_type_args; // arguments that are not parameters
     expr it = intro_type;
     while (is_pi(it)) {
-        expr local = mk_local(ngen.next(), binding_name(it), binding_domain(it), binding_info(it));
+        expr local = mk_local(mk_fresh_name(), binding_name(it), binding_domain(it), binding_info(it));
         intro_type_args.push_back(local);
         it = instantiate(binding_body(it), local);
     }
@@ -222,16 +223,20 @@ environment mk_projections(environment const & env, name const & n, buffer<name>
         if (!is_pi(intro_type))
             throw exception(sstream() << "generating projection '" << proj_name << "', '"
                             << n << "' does not have sufficient data");
+        type_checker tc(new_env);
         expr result_type   = binding_domain(intro_type);
+        if (is_predicate && !tc.is_prop(result_type).first) {
+            throw exception(sstream() << "failed to generate projection '" << proj_name << "' for '" << n << "', "
+                            << "type is an inductive predicate, but field is not a proposition");
+        }
         buffer<expr> proj_args;
         proj_args.append(params);
         proj_args.push_back(c);
-        expr type_former   = Fun(c, result_type);
+        expr type_former   = dep_elim ? Fun(c, result_type) : result_type;
         expr minor_premise = Fun(intro_type_args, mk_var(intro_type_args.size() - i - 1));
         expr major_premise = c;
-        type_checker tc(new_env);
         level l            = sort_level(tc.ensure_sort(tc.infer(result_type).first).first);
-        levels rec_lvls    = append(to_list(l), lvls);
+        levels rec_lvls    = elim_to_prop ? lvls : append(to_list(l), lvls);
         expr rec           = mk_constant(rec_name, rec_lvls);
         buffer<expr> rec_args;
         rec_args.append(params);

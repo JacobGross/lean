@@ -6,7 +6,6 @@ Author: Leonardo de Moura
 */
 #pragma once
 #include <utility>
-#include "util/lua.h"
 #include "util/pair.h"
 #include "util/rb_tree.h"
 
@@ -74,6 +73,21 @@ public:
         return m_map.for_each(f_prime);
     }
 
+    template<typename F>
+    optional<T> find_if(F && f) const {
+        auto f_prime = [&](entry const & e) { return f(e.first, e.second); };
+        if (auto r = m_map.find_if(f_prime))
+            return optional<T>(r->second);
+        else
+            return optional<T>();
+    }
+
+    template<typename F>
+    void for_each_greater(K const & k, F && f) const {
+        auto f_prime = [&](entry const & e) { f(e.first, e.second); };
+        m_map.for_each_greater(mk_pair(k, T()), f_prime);
+    }
+
     /** \brief (For debugging) Display the content of this splay map. */
     friend std::ostream & operator<<(std::ostream & out, rb_map const & m) {
         out << "{";
@@ -100,5 +114,4 @@ template<typename K, typename T, typename CMP, typename F>
 void for_each(rb_map<K, T, CMP> const & m, F && f) {
     return m.for_each(f);
 }
-void open_rb_map(lua_State * L);
 }

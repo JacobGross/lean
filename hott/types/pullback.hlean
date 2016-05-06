@@ -7,7 +7,7 @@ Theorems about pullbacks
 -/
 
 import cubical.square
-open eq equiv is_equiv function equiv.ops prod unit is_trunc sigma
+open eq equiv is_equiv function prod unit is_trunc sigma
 
 variables {A₀₀ A₂₀ A₄₀ A₀₂ A₂₂ A₄₂ : Type}
           (f₁₀ : A₀₀ → A₂₀) (f₃₀ : A₂₀ → A₄₀)
@@ -58,7 +58,7 @@ namespace pullback
     { intro v, induction v with x y p, exact (x, y)},
     { intro v, induction v with x y, exact pullback.mk x y idp},
     { intro v, induction v, reflexivity},
-    { intro v, induction v, esimp, apply ap _ !is_hprop.elim},
+    { intro v, induction v, esimp, apply ap _ !is_prop.elim},
   end
 
   definition pullback_along {f : A₂₀ → A₂₂} (g : A₀₂ → A₂₂) : pullback f g → A₂₀ :=

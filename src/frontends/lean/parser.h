@@ -9,17 +9,12 @@ Author: Leonardo de Moura
 #include <utility>
 #include <vector>
 #include "util/flet.h"
-#include "util/script_state.h"
 #include "util/name_map.h"
 #include "util/exception.h"
-#include "util/thread_script_state.h"
-#include "util/script_exception.h"
-#include "util/name_generator.h"
 #include "kernel/environment.h"
 #include "kernel/expr_maps.h"
 #include "library/io_state.h"
 #include "library/io_state_stream.h"
-#include "library/kernel_bindings.h"
 #include "library/definition_cache.h"
 #include "library/declaration_index.h"
 #include "frontends/lean/scanner.h"
@@ -67,7 +62,6 @@ typedef list<parser_scope_stack_elem> parser_scope_stack;
 /** \brief Snapshot of the state of the Lean parser */
 struct snapshot {
     environment        m_env;
-    name_generator     m_ngen;
     local_level_decls  m_lds;
     local_expr_decls   m_eds;
     name_set           m_lvars; // subset of m_lds that is tagged as level variable
@@ -78,10 +72,10 @@ struct snapshot {
     unsigned           m_line;
     snapshot():m_line(0) {}
     snapshot(environment const & env, options const & o):m_env(env), m_options(o), m_line(1) {}
-    snapshot(environment const & env, name_generator const & ngen, local_level_decls const & lds,
+    snapshot(environment const & env, local_level_decls const & lds,
              local_expr_decls const & eds, name_set const & lvars, name_set const & vars,
              name_set const & includes, options const & opts, parser_scope_stack const & pss, unsigned line):
-        m_env(env), m_ngen(ngen), m_lds(lds), m_eds(eds), m_lvars(lvars), m_vars(vars), m_include_vars(includes),
+        m_env(env), m_lds(lds), m_eds(eds), m_lvars(lvars), m_vars(vars), m_include_vars(includes),
         m_options(opts), m_parser_scope_stack(pss), m_line(line) {}
 };
 
@@ -94,7 +88,6 @@ enum class undef_id_behavior { Error, AssumeConstant, AssumeLocal };
 class parser {
     environment             m_env;
     io_state                m_ios;
-    name_generator          m_ngen;
     bool                    m_verbose;
     bool                    m_use_exceptions;
     bool                    m_show_errors;
@@ -110,7 +103,6 @@ class parser {
     name_set                m_include_vars; // subset of m_local_decls that is marked as include
     parser_scope_stack      m_parser_scope_stack;
     pos_info                m_last_cmd_pos;
-    pos_info                m_last_script_pos;
     unsigned                m_next_tag_idx;
     unsigned                m_next_inst_idx;
     bool                    m_found_errors;
@@ -166,23 +158,11 @@ class parser {
     void display_error_pos(pos_info p);
     void display_error(char const * msg, unsigned line, unsigned pos);
     void display_error(char const * msg, pos_info p);
-    void display_error(script_exception const & ex);
     void throw_parser_exception(char const * msg, pos_info p);
     void throw_nested_exception(throwable const & ex, pos_info p);
 
     void sync_command();
     void protected_call(std::function<void()> && f, std::function<void()> && sync);
-    template<typename F>
-    typename std::result_of<F(lua_State * L)>::type using_script(F && f) {
-        try {
-            script_state S = get_thread_script_state();
-            set_io_state    set1(S, m_ios);
-            set_environment set2(S, m_env);
-            return f(S.get_state());
-        } catch (script_nested_exception & ex) {
-            ex.get_exception().rethrow();
-        }
-    }
 
     tag get_tag(expr e);
     expr copy_with_new_pos(expr const & e, pos_info p);
@@ -200,7 +180,6 @@ class parser {
 
     void parse_imports();
     void parse_command();
-    void parse_script(bool as_expr = false);
     bool parse_commands();
     unsigned curr_lbp_core(bool as_tactic) const;
     void process_postponed(buffer<expr> const & args, bool is_left, buffer<notation::action_kind> const & kinds,
@@ -317,16 +296,12 @@ public:
 
     bool has_tactic_decls();
     expr mk_by(expr const & t, pos_info const & pos);
-    expr mk_by_plus(expr const & t, pos_info const & pos);
 
     bool keep_new_thms() const { return m_keep_theorem_mode != keep_theorem_mode::DiscardAll; }
 
     void updt_options();
     options get_options() const { return m_ios.get_options(); }
     template<typename T> void set_option(name const & n, T const & v) { m_ios.set_option(n, v); }
-
-    name mk_fresh_name() { return m_ngen.next(); }
-    name_generator mk_ngen() { return m_ngen.mk_child(); }
 
     /** \brief Return the current position information */
     pos_info pos() const { return pos_info(m_scanner.get_line(), m_scanner.get_pos()); }
@@ -364,8 +339,6 @@ public:
     bool curr_is_keyword() const { return curr() == scanner::token_kind::Keyword; }
     /** \brief Return true iff the current token is a keyword */
     bool curr_is_command() const { return curr() == scanner::token_kind::CommandKeyword; }
-    /** \brief Return true iff the current token is a Lua script block */
-    bool curr_is_script_block() const { return curr() == scanner::token_kind::ScriptBlock; }
     /** \brief Return true iff the current token is EOF */
     bool curr_is_eof() const { return curr() == scanner::token_kind::Eof; }
     /** \brief Return true iff the current token is a keyword */
@@ -402,9 +375,6 @@ public:
     std::string const & get_str_val() const { return m_scanner.get_str_val(); }
     token_info const & get_token_info() const { return m_scanner.get_token_info(); }
     std::string const & get_stream_name() const { return m_scanner.get_stream_name(); }
-
-    io_state_stream regular_stream() const { return regular(env(), ios()); }
-    io_state_stream diagnostic_stream() const { return diagnostic(env(), ios()); }
 
     unsigned get_small_nat();
     unsigned parse_small_nat();

@@ -23,7 +23,7 @@ protected definition prio : num := num.succ std.priority.default
 protected definition is_inhabited [instance] : inhabited hf :=
 nat.is_inhabited
 
-protected definition has_decidable_eq [reducible] [instance] : decidable_eq hf :=
+protected definition has_decidable_eq [instance] : decidable_eq hf :=
 nat.has_decidable_eq
 
 definition of_finset (s : finset hf) : hf :=
@@ -69,7 +69,7 @@ notation [priority finset.prio] a ∉ b := ¬ mem a b
 
 lemma insert_lt_of_not_mem {a s : hf} : a ∉ s → s < insert a s :=
 begin
-  unfold [insert, of_finset, equiv.to_fun, finset_nat_equiv_nat, mem, to_finset, equiv.inv],
+  unfold [insert, of_finset, finset_nat_equiv_nat, mem, to_finset, equiv.inv],
   intro h,
   rewrite [finset.to_nat_insert h],
   rewrite [to_nat_of_nat, -zero_add s at {1}],
@@ -80,7 +80,7 @@ end
 lemma insert_lt_insert_of_not_mem_of_not_mem_of_lt {a s₁ s₂ : hf}
       : a ∉ s₁ → a ∉ s₂ → s₁ < s₂ → insert a s₁ < insert a s₂ :=
 begin
-  unfold [insert, of_finset, equiv.to_fun, finset_nat_equiv_nat, mem, to_finset, equiv.inv],
+  unfold [insert, of_finset, finset_nat_equiv_nat, mem, to_finset, equiv.inv],
   intro h₁ h₂ h₃,
   rewrite [finset.to_nat_insert h₁],
   rewrite [finset.to_nat_insert h₂, *to_nat_of_nat],
@@ -113,8 +113,8 @@ begin unfold [mem, insert], rewrite to_finset_of_finset, intros, apply mem_of_me
 
 protected theorem ext {s₁ s₂ : hf} : (∀ a, a ∈ s₁ ↔ a ∈ s₂) → s₁ = s₂ :=
 assume h,
-assert to_finset s₁ = to_finset s₂, from finset.ext h,
-assert of_finset (to_finset s₁) = of_finset (to_finset s₂), by rewrite this,
+have to_finset s₁ = to_finset s₂, from finset.ext h,
+have of_finset (to_finset s₁) = of_finset (to_finset s₂), by rewrite this,
 by rewrite [*of_finset_to_finset at this]; exact this
 
 theorem insert_eq_of_mem {a : hf} {s : hf} : a ∈ s → insert a s = s :=
@@ -122,7 +122,7 @@ begin unfold mem, intro h, unfold [mem, insert], rewrite (finset.insert_eq_of_me
 
 protected theorem induction [recursor 4] {P : hf → Prop}
     (h₁ : P empty) (h₂ : ∀ (a s : hf), a ∉ s → P s → P (insert a s)) (s : hf) : P s :=
-assert P (of_finset (to_finset s)), from
+have P (of_finset (to_finset s)), from
   @finset.induction _ _ _ h₁
     (λ a s nain ih,
        begin
@@ -181,17 +181,17 @@ iff.intro
 theorem mem_union_eq {a : hf} (s₁ s₂ : hf) : (a ∈ s₁ ∪ s₂) = (a ∈ s₁ ∨ a ∈ s₂) :=
 propext !mem_union_iff
 
-theorem union.comm (s₁ s₂ : hf) : s₁ ∪ s₂ = s₂ ∪ s₁ :=
+theorem union_comm (s₁ s₂ : hf) : s₁ ∪ s₂ = s₂ ∪ s₁ :=
 hf.ext (λ a, by rewrite [*mem_union_eq]; exact or.comm)
 
-theorem union.assoc (s₁ s₂ s₃ : hf) : (s₁ ∪ s₂) ∪ s₃ = s₁ ∪ (s₂ ∪ s₃) :=
+theorem union_assoc (s₁ s₂ s₃ : hf) : (s₁ ∪ s₂) ∪ s₃ = s₁ ∪ (s₂ ∪ s₃) :=
 hf.ext (λ a, by rewrite [*mem_union_eq]; exact or.assoc)
 
-theorem union.left_comm (s₁ s₂ s₃ : hf) : s₁ ∪ (s₂ ∪ s₃) = s₂ ∪ (s₁ ∪ s₃) :=
-!left_comm union.comm union.assoc s₁ s₂ s₃
+theorem union_left_comm (s₁ s₂ s₃ : hf) : s₁ ∪ (s₂ ∪ s₃) = s₂ ∪ (s₁ ∪ s₃) :=
+!left_comm union_comm union_assoc s₁ s₂ s₃
 
-theorem union.right_comm (s₁ s₂ s₃ : hf) : (s₁ ∪ s₂) ∪ s₃ = (s₁ ∪ s₃) ∪ s₂ :=
-!right_comm union.comm union.assoc s₁ s₂ s₃
+theorem union_right_comm (s₁ s₂ s₃ : hf) : (s₁ ∪ s₂) ∪ s₃ = (s₁ ∪ s₃) ∪ s₂ :=
+!right_comm union_comm union_assoc s₁ s₂ s₃
 
 theorem union_self (s : hf) : s ∪ s = s :=
 hf.ext (λ a, iff.intro
@@ -204,7 +204,7 @@ hf.ext (λ a, iff.intro
   (suppose a ∈ s, mem_union_left _ this))
 
 theorem empty_union (s : hf) : ∅ ∪ s = s :=
-calc ∅ ∪ s = s ∪ ∅ : union.comm
+calc ∅ ∪ s = s ∪ ∅ : union_comm
        ... = s     : union_empty
 
 /- inter -/
@@ -230,17 +230,17 @@ iff.intro
 theorem mem_inter_eq (a : hf) (s₁ s₂ : hf) : (a ∈ s₁ ∩ s₂) = (a ∈ s₁ ∧ a ∈ s₂) :=
 propext !mem_inter_iff
 
-theorem inter.comm (s₁ s₂ : hf) : s₁ ∩ s₂ = s₂ ∩ s₁ :=
+theorem inter_comm (s₁ s₂ : hf) : s₁ ∩ s₂ = s₂ ∩ s₁ :=
 hf.ext (λ a, by rewrite [*mem_inter_eq]; exact and.comm)
 
-theorem inter.assoc (s₁ s₂ s₃ : hf) : (s₁ ∩ s₂) ∩ s₃ = s₁ ∩ (s₂ ∩ s₃) :=
+theorem inter_assoc (s₁ s₂ s₃ : hf) : (s₁ ∩ s₂) ∩ s₃ = s₁ ∩ (s₂ ∩ s₃) :=
 hf.ext (λ a, by rewrite [*mem_inter_eq]; exact and.assoc)
 
-theorem inter.left_comm (s₁ s₂ s₃ : hf) : s₁ ∩ (s₂ ∩ s₃) = s₂ ∩ (s₁ ∩ s₃) :=
-!left_comm inter.comm inter.assoc s₁ s₂ s₃
+theorem inter_left_comm (s₁ s₂ s₃ : hf) : s₁ ∩ (s₂ ∩ s₃) = s₂ ∩ (s₁ ∩ s₃) :=
+!left_comm inter_comm inter_assoc s₁ s₂ s₃
 
-theorem inter.right_comm (s₁ s₂ s₃ : hf) : (s₁ ∩ s₂) ∩ s₃ = (s₁ ∩ s₃) ∩ s₂ :=
-!right_comm inter.comm inter.assoc s₁ s₂ s₃
+theorem inter_right_comm (s₁ s₂ s₃ : hf) : (s₁ ∩ s₂) ∩ s₃ = (s₁ ∩ s₃) ∩ s₂ :=
+!right_comm inter_comm inter_assoc s₁ s₂ s₃
 
 theorem inter_self (s : hf) : s ∩ s = s :=
 hf.ext (λ a, iff.intro
@@ -253,7 +253,7 @@ hf.ext (λ a, iff.intro
   (suppose a ∈ ∅,     absurd this !not_mem_empty))
 
 theorem empty_inter (s : hf) : ∅ ∩ s = ∅ :=
-calc ∅ ∩ s = s ∩ ∅ : inter.comm
+calc ∅ ∩ s = s ∩ ∅ : inter_comm
        ... = ∅     : inter_empty
 
 /- card -/
@@ -270,8 +270,8 @@ by intros; substvars; contradiction
 definition erase (a : hf) (s : hf) : hf :=
 of_finset (erase a (to_finset s))
 
-theorem mem_erase (a : hf) (s : hf) : a ∉ erase a s :=
-begin unfold [mem, erase], rewrite to_finset_of_finset, apply finset.mem_erase end
+theorem not_mem_erase (a : hf) (s : hf) : a ∉ erase a s :=
+begin unfold [mem, erase], rewrite to_finset_of_finset, apply finset.not_mem_erase end
 
 theorem card_erase_of_mem {a : hf} {s : hf} : a ∈ s → card (erase a s) = pred (card s) :=
 begin unfold mem, intro h, unfold [erase, card], rewrite to_finset_of_finset, apply finset.card_erase_of_mem h end
@@ -283,7 +283,7 @@ theorem erase_empty (a : hf) : erase a ∅ = ∅ :=
 rfl
 
 theorem ne_of_mem_erase {a b : hf} {s : hf} : b ∈ erase a s → b ≠ a :=
-by intro h beqa; subst b; exact absurd h !mem_erase
+by intro h beqa; subst b; exact absurd h !not_mem_erase
 
 theorem mem_of_mem_erase {a b : hf} {s : hf} : b ∈ erase a s → b ∈ s :=
 begin unfold [erase, mem], rewrite to_finset_of_finset, intro h, apply mem_of_mem_erase h end
@@ -388,16 +388,16 @@ begin
   revert s₂, induction s₁ with a s₁ nain ih,
    take s₂, suppose ∅ ⊆ s₂, !zero_le,
    take s₂, suppose insert a s₁ ⊆ s₂,
-     assert a ∈ s₂,          from mem_of_subset_of_mem this !mem_insert,
-     have   a ∉ erase a s₂,  from !mem_erase,
-     have   s₁ ⊆ erase a s₂, from subset_of_forall
+     have a ∈ s₂,          from mem_of_subset_of_mem this !mem_insert,
+     have a ∉ erase a s₂,  from !not_mem_erase,
+     have s₁ ⊆ erase a s₂, from subset_of_forall
        (take x xin, by_cases
          (suppose x = a, by subst x; contradiction)
          (suppose x ≠ a,
            have x ∈ s₂, from mem_of_subset_of_mem `insert a s₁ ⊆ s₂` (mem_insert_of_mem _ `x ∈ s₁`),
            mem_erase_of_ne_of_mem `x ≠ a` `x ∈ s₂`)),
-     have   s₁ ≤ erase a s₂, from ih _ this,
-     assert insert a s₁ ≤ insert a (erase a s₂), from
+     have s₁ ≤ erase a s₂, from ih _ this,
+     have insert a s₁ ≤ insert a (erase a s₂), from
        insert_le_insert_of_le (or.inr `a ∉ erase a s₂`) this,
      by rewrite [insert_erase `a ∈ s₂` at this]; exact this
 end
@@ -433,8 +433,8 @@ theorem image_insert (f : hf → hf) (s : hf) (a : hf) : image f (insert a s) = 
 begin unfold [image, insert], rewrite [*to_finset_of_finset, finset.image_insert] end
 
 open function
-lemma image_compose {f : hf → hf} {g : hf → hf} {s : hf} : image (f∘g) s = image f (image g s) :=
-begin unfold image, rewrite [*to_finset_of_finset, finset.image_compose] end
+lemma image_comp {f : hf → hf} {g : hf → hf} {s : hf} : image (f∘g) s = image f (image g s) :=
+begin unfold image, rewrite [*to_finset_of_finset, finset.image_comp] end
 
 lemma image_subset {a b : hf} (f : hf → hf) : a ⊆ b → image f a ⊆ image f b :=
 begin unfold [subset, image], intro h, rewrite *to_finset_of_finset, apply finset.image_subset f h end
@@ -455,7 +455,7 @@ theorem powerset_insert {a : hf} {s : hf} : a ∉ s → 𝒫 (insert a s) = 𝒫
 begin unfold [mem, powerset, insert, union, image], rewrite [*to_finset_of_finset], intro h,
       have (λ (x : finset hf), of_finset (finset.insert a x)) = (λ (x : finset hf), of_finset (finset.insert a (to_finset (of_finset x)))), from
         funext (λ x, by rewrite to_finset_of_finset),
-      rewrite [finset.powerset_insert h, finset.image_union, -*finset.image_compose,↑compose,this]
+      rewrite [finset.powerset_insert h, finset.image_union, -*finset.image_comp, ↑comp, this]
 end
 
 theorem mem_powerset_iff_subset (s : hf) : ∀ x : hf, x ∈ 𝒫 s ↔ x ⊆ s :=
@@ -465,7 +465,7 @@ begin
     obtain w h₁ h₂, from this,
     begin subst x, rewrite to_finset_of_finset, exact iff.mp !finset.mem_powerset_iff_subset h₁ end,
   suppose finset.subset (to_finset x) (to_finset s),
-    assert finset.mem (to_finset x) (finset.powerset (to_finset s)), from iff.mpr !finset.mem_powerset_iff_subset this,
+    have finset.mem (to_finset x) (finset.powerset (to_finset s)), from iff.mpr !finset.mem_powerset_iff_subset this,
     exists.intro (to_finset x) (and.intro this (of_finset_to_finset x))
 end
 

@@ -19,10 +19,10 @@ variable {A : Type}
 namespace algebra
 
 structure semigroup [class] (A : Type) extends has_mul A :=
-(is_hset_carrier : is_hset A)
+(is_set_carrier : is_set A)
 (mul_assoc : Πa b c, mul (mul a b) c = mul a (mul b c))
 
-attribute semigroup.is_hset_carrier [instance]
+attribute semigroup.is_set_carrier [instance]
 
 definition mul.assoc [s : semigroup A] (a b c : A) : a * b * c = a * (b * c) :=
 !semigroup.mul_assoc
@@ -60,10 +60,10 @@ abbreviation eq_of_mul_eq_mul_right' := @mul.right_cancel
 /- additive semigroup -/
 
 structure add_semigroup [class] (A : Type) extends has_add A :=
-(is_hset_carrier : is_hset A)
+(is_set_carrier : is_set A)
 (add_assoc : Πa b c, add (add a b) c = add a (add b c))
 
-attribute add_semigroup.is_hset_carrier [instance]
+attribute add_semigroup.is_set_carrier [instance]
 
 definition add.assoc [s : add_semigroup A] (a b c : A) : a + b + c = a + (b + c) :=
 !add_semigroup.add_assoc
@@ -128,7 +128,7 @@ definition add_monoid.to_monoid {A : Type} [s : add_monoid A] : monoid A :=
   one         := add_monoid.zero A,
   mul_one     := add_monoid.add_zero,
   one_mul     := add_monoid.zero_add,
-  is_hset_carrier := _
+  is_set_carrier := _
 ⦄
 
 definition add_comm_monoid.to_comm_monoid {A : Type} [s : add_comm_monoid A] : comm_monoid A :=
@@ -304,7 +304,7 @@ section group
 
   lemma is_conj.symm (a b : A) : a ~ b → b ~ a :=
       assume Pab, obtain x (Pconj : x ∘c b = a), from Pab,
-      assert Pxinv : x⁻¹ ∘c x ∘c b = x⁻¹ ∘c a,   begin congruence, assumption end,
+      have Pxinv : x⁻¹ ∘c x ∘c b = x⁻¹ ∘c a,   begin congruence, assumption end,
       sigma.mk x⁻¹ (inverse (conj_inv_cancel x b ▸ Pxinv))
 
   lemma is_conj.trans (a b c : A) : a ~ b → b ~ c → a ~ c :=
@@ -316,13 +316,11 @@ section group
       ... = x ∘c b : Py
       ... = a : Px)
 
-  definition group.to_left_cancel_semigroup [trans_instance] [reducible] :
-    left_cancel_semigroup A :=
+  definition group.to_left_cancel_semigroup [trans_instance] : left_cancel_semigroup A :=
   ⦃ left_cancel_semigroup, s,
     mul_left_cancel := @mul_left_cancel A s ⦄
 
-  definition group.to_right_cancel_semigroup [trans_instance] [reducible] :
-    right_cancel_semigroup A :=
+  definition group.to_right_cancel_semigroup [trans_instance] : right_cancel_semigroup A :=
   ⦃ right_cancel_semigroup, s,
     mul_right_cancel := @mul_right_cancel A s ⦄
 
@@ -354,7 +352,7 @@ section add_group
   by rewrite [add.assoc, add.left_inv, add_zero]
 
   theorem neg_eq_of_add_eq_zero {a b : A} (H : a + b = 0) : -a = b :=
-  by rewrite [-add_zero, -H, neg_add_cancel_left]
+  by rewrite [-add_zero (-a), -H, neg_add_cancel_left]
 
   theorem neg_zero : -0 = (0 : A) := neg_eq_of_add_eq_zero (zero_add 0)
 
@@ -444,13 +442,11 @@ section add_group
      ... = (c + b) + -b : H
      ... = c : add_neg_cancel_right
 
-  definition add_group.to_left_cancel_semigroup [trans_instance] [reducible] :
-    add_left_cancel_semigroup A :=
+  definition add_group.to_left_cancel_semigroup [trans_instance] : add_left_cancel_semigroup A :=
   ⦃ add_left_cancel_semigroup, s,
     add_left_cancel := @add_left_cancel A s ⦄
 
-  definition add_group.to_add_right_cancel_semigroup [trans_instance] [reducible] :
-    add_right_cancel_semigroup A :=
+  definition add_group.to_add_right_cancel_semigroup [trans_instance] : add_right_cancel_semigroup A :=
   ⦃ add_right_cancel_semigroup, s,
     add_right_cancel := @add_right_cancel A s ⦄
 
@@ -462,7 +458,7 @@ section add_group
   -- TODO: derive corresponding facts for div in a field
   protected definition algebra.sub [reducible] (a b : A) : A := a + -b
 
-  definition add_group_has_sub [reducible] [instance] : has_sub A :=
+  definition add_group_has_sub [instance] : has_sub A :=
   has_sub.mk algebra.sub
 
   theorem sub_eq_add_neg (a b : A) : a - b = a + -b := rfl
@@ -585,7 +581,7 @@ definition group_of_add_group (A : Type) [G : add_group A] : group A :=
   mul_one         := add_zero,
   inv             := has_neg.neg,
   mul_left_inv    := add.left_inv,
-  is_hset_carrier := _⦄
+  is_set_carrier := _⦄
 
 namespace norm_num
 reveal add.assoc

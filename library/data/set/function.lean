@@ -12,6 +12,100 @@ namespace set
 
 variables {X Y Z : Type}
 
+/- preimages -/
+
+definition preimage {A B:Type} (f : A → B) (Y : set B) : set A := { x | f x ∈ Y }
+
+notation f ` '- ` s := preimage f s
+
+theorem mem_preimage_iff (f : X → Y) (a : set Y) (x : X) :
+  f x ∈ a ↔ x ∈ f '- a :=
+!iff.refl
+
+theorem mem_preimage {f : X → Y} {a : set Y} {x : X} (H : f x ∈ a) :
+  x ∈ f '- a := H
+
+theorem mem_of_mem_preimage {f : X → Y} {a : set Y} {x : X} (H : x ∈ f '- a) :
+  f x ∈ a :=
+proof H qed
+
+theorem preimage_comp (f : Y → Z) (g : X → Y) (a : set Z) :
+  (f ∘ g) '- a = g '- (f '- a) :=
+ext (take x, !iff.refl)
+
+lemma image_subset_iff {A B : Type} {f : A → B} {X : set A} {Y : set B} :
+  f ' X ⊆ Y ↔ X ⊆ f '- Y :=
+@bounded_forall_image_iff A B f X Y
+
+theorem preimage_subset {a b : set Y} (f : X → Y) (H : a ⊆ b) :
+  f '- a ⊆ f '- b :=
+λ x H', proof @H (f x) H' qed
+
+theorem preimage_id (s : set Y) : (λx, x) '- s = s :=
+ext (take x, !iff.refl)
+
+theorem preimage_union (f : X → Y) (s t : set Y) :
+  f '- (s ∪ t) = f '- s ∪ f '- t :=
+ext (take x, !iff.refl)
+
+theorem preimage_inter (f : X → Y) (s t : set Y) :
+  f '- (s ∩ t) = f '- s ∩ f '- t :=
+ext (take x, !iff.refl)
+
+theorem preimage_compl (f : X → Y) (s : set Y) :
+  f '- (-s) = -(f '- s) :=
+ext (take x, !iff.refl)
+
+theorem preimage_diff (f : X → Y) (s t : set Y) :
+  f '- (s \ t) = f '- s \ f '- t :=
+ext (take x, !iff.refl)
+
+theorem image_preimage_subset (f : X → Y) (s : set Y) :
+  f ' (f '- s) ⊆ s :=
+take y, suppose y ∈ f ' (f '- s),
+  obtain x [xfis fxeqy], from this,
+  show y ∈ s, by rewrite -fxeqy; exact xfis
+
+theorem subset_preimage_image (s : set X) (f : X → Y) :
+  s ⊆ f '- (f ' s) :=
+take x, suppose x ∈ s,
+show f x ∈ f ' s, from mem_image_of_mem f this
+
+theorem inter_preimage_subset (s : set X) (t : set Y) (f : X → Y) :
+  s ∩ f '- t ⊆ f '- (f ' s ∩ t) :=
+take x, assume H : x ∈ s ∩ f '- t,
+mem_preimage (show f x ∈ f ' s ∩ t,
+  from and.intro (mem_image_of_mem f (and.left H)) (mem_of_mem_preimage (and.right H)))
+
+theorem union_preimage_subset (s : set X) (t : set Y) (f : X → Y) :
+  s ∪ f '- t ⊆ f '- (f ' s ∪ t) :=
+take x, assume H : x ∈ s ∪ f '- t,
+mem_preimage (show f x ∈ f ' s ∪ t,
+  from or.elim H
+    (suppose x ∈ s, or.inl (mem_image_of_mem f this))
+    (suppose x ∈ f '- t, or.inr (mem_of_mem_preimage this)))
+
+theorem image_inter (f : X → Y) (s : set X) (t : set Y) :
+  f ' s ∩ t = f ' (s ∩ f '- t) :=
+ext (take y, iff.intro
+  (suppose y ∈ f ' s ∩ t,
+    obtain [x [xs fxeqy]] yt, from this,
+    have x ∈ s ∩ f '- t,
+      from and.intro xs (mem_preimage (show f x ∈ t, by rewrite fxeqy; exact yt)),
+    mem_image this fxeqy)
+  (suppose y ∈ f ' (s ∩ f '- t),
+    obtain x [[xs xfit] fxeqy], from this,
+    and.intro (mem_image xs fxeqy)
+      (show y ∈ t, by rewrite -fxeqy; exact mem_of_mem_preimage xfit)))
+
+theorem image_union_supset (f : X → Y) (s : set X) (t : set Y) :
+  f ' s ∪ t ⊇ f ' (s ∪ f '- t) :=
+take y, assume H,
+obtain x [xmem fxeqy], from H,
+or.elim xmem
+  (suppose x ∈ s, or.inl (mem_image this fxeqy))
+  (suppose x ∈ f '- t, or.inr (show y ∈ t, by rewrite -fxeqy; exact mem_of_mem_preimage this))
+
 /- maps to -/
 
 definition maps_to [reducible] (f : X → Y) (a : set X) (b : set Y) : Prop := ∀⦃x⦄, x ∈ a → f x ∈ b
@@ -24,22 +118,26 @@ assume xa : x ∈ a,
 have H : f1 x ∈ b, from maps_to_f1 xa,
 show f2 x ∈ b, from eq_on_a xa ▸ H
 
-theorem maps_to_compose {g : Y → Z} {f : X → Y} {a : set X} {b : set Y} {c : set Z}
+theorem maps_to_comp {g : Y → Z} {f : X → Y} {a : set X} {b : set Y} {c : set Z}
    (H1 : maps_to g b c) (H2 : maps_to f a b) : maps_to (g ∘ f) a c :=
 take x, assume H : x ∈ a, H1 (H2 H)
 
 theorem maps_to_univ_univ (f : X → Y) : maps_to f univ univ :=
 take x, assume H, trivial
 
-theorem image_subset_of_maps_to {f : X → Y} {a : set X} {b : set Y} (mfab : maps_to f a b)
+theorem image_subset_of_maps_to_of_subset {f : X → Y} {a : set X} {b : set Y} (mfab : maps_to f a b)
     {c : set X} (csuba : c ⊆ a) :
-  f '[c] ⊆ b :=
+  f ' c ⊆ b :=
 take y,
-suppose y ∈ f '[c],
+suppose y ∈ f ' c,
 obtain x [(xc : x ∈ c) (yeq : f x = y)], from this,
 have x ∈ a, from csuba `x ∈ c`,
 have f x ∈ b, from mfab this,
 show y ∈ b, from yeq ▸ this
+
+theorem image_subset_of_maps_to {f : X → Y} {a : set X} {b : set Y} (mfab : maps_to f a b) :
+  f ' a ⊆ b :=
+image_subset_of_maps_to_of_subset mfab (subset.refl a)
 
 /- injectivity -/
 
@@ -59,7 +157,7 @@ assume H : f2 x1 = f2 x2,
 have H' : f1 x1 = f1 x2, from eq_f1_f2 ax1 ⬝ H ⬝ (eq_f1_f2 ax2)⁻¹,
 show x1 = x2, from inj_f1 ax1 ax2 H'
 
-theorem inj_on_compose {g : Y → Z} {f : X → Y} {a : set X} {b : set Y}
+theorem inj_on_comp {g : Y → Z} {f : X → Y} {a : set X} {b : set Y}
     (fab : maps_to f a b) (Hg : inj_on g b) (Hf: inj_on f a) :
   inj_on (g ∘ f) a :=
 take x1 x2 : X,
@@ -86,7 +184,7 @@ iff.intro
 
 /- surjectivity -/
 
-definition surj_on [reducible] (f : X → Y) (a : set X) (b : set Y) : Prop := b ⊆ f '[a]
+definition surj_on [reducible] (f : X → Y) (a : set X) (b : set Y) : Prop := b ⊆ f ' a
 
 theorem surj_on_of_eq_on {f1 f2 : X → Y} {a : set X} {b : set Y} (eq_f1_f2 : eq_on f1 f2 a)
     (surj_f1 : surj_on f1 a b) :
@@ -97,7 +195,7 @@ have H2 : x ∈ a, from and.left H1,
 have H3 : f2 x = y, from (eq_f1_f2 H2)⁻¹ ⬝ and.right H1,
 exists.intro x (and.intro H2 H3)
 
-theorem surj_on_compose {g : Y → Z} {f : X → Y} {a : set X} {b : set Y} {c : set Z}
+theorem surj_on_comp {g : Y → Z} {f : X → Y} {a : set X} {b : set Y} {c : set Z}
   (Hg : surj_on g b c) (Hf: surj_on f a b) :
   surj_on (g ∘ f) a c :=
 take z,
@@ -121,10 +219,32 @@ iff.intro
     obtain x H1x H2x, from H y trivial,
     exists.intro x H2x)
 
+lemma image_eq_of_maps_to_of_surj_on {f : X → Y} {a : set X} {b : set Y}
+    (H1 : maps_to f a b) (H2 : surj_on f a b) :
+  f ' a = b :=
+eq_of_subset_of_subset (image_subset_of_maps_to H1) H2
+
 /- bijectivity -/
 
 definition bij_on [reducible] (f : X → Y) (a : set X) (b : set Y) : Prop :=
 maps_to f a b ∧ inj_on f a ∧ surj_on f a b
+
+lemma maps_to_of_bij_on {f : X → Y} {a : set X} {b : set Y} (H : bij_on f a b) :
+      maps_to f a b :=
+and.left H
+
+lemma inj_on_of_bij_on {f : X → Y} {a : set X} {b : set Y} (H : bij_on f a b) :
+      inj_on f a :=
+and.left (and.right H)
+
+lemma surj_on_of_bij_on {f : X → Y} {a : set X} {b : set Y} (H : bij_on f a b) :
+      surj_on f a b :=
+and.right (and.right H)
+
+lemma bij_on.mk {f : X → Y} {a : set X} {b : set Y}
+                (H₁ : maps_to f a b) (H₂ : inj_on f a) (H₃ : surj_on f a b) :
+      bij_on f a b :=
+and.intro H₁ (and.intro H₂ H₃)
 
 theorem bij_on_of_eq_on {f1 f2 : X → Y} {a : set X} {b : set Y} (eqf : eq_on f1 f2 a)
      (H : bij_on f1 a b) : bij_on f2 a b :=
@@ -136,16 +256,20 @@ match H with and.intro Hmap (and.intro Hinj Hsurj) :=
       (surj_on_of_eq_on eqf Hsurj))
 end
 
-theorem bij_on_compose {g : Y → Z} {f : X → Y} {a : set X} {b : set Y} {c : set Z}
+lemma image_eq_of_bij_on {f : X → Y} {a : set X} {b : set Y} (bfab : bij_on f a b) :
+  f ' a = b :=
+image_eq_of_maps_to_of_surj_on (and.left bfab) (and.right (and.right bfab))
+
+theorem bij_on_comp {g : Y → Z} {f : X → Y} {a : set X} {b : set Y} {c : set Z}
   (Hg : bij_on g b c) (Hf: bij_on f a b) :
   bij_on (g ∘ f) a c :=
 match Hg with and.intro Hgmap (and.intro Hginj Hgsurj) :=
   match Hf with and.intro Hfmap (and.intro Hfinj Hfsurj) :=
     and.intro
-      (maps_to_compose Hgmap Hfmap)
+      (maps_to_comp Hgmap Hfmap)
       (and.intro
-        (inj_on_compose Hfmap Hginj Hfinj)
-        (surj_on_compose Hgsurj Hfsurj))
+        (inj_on_comp Hfmap Hginj Hfinj)
+        (surj_on_comp Hgsurj Hfsurj))
   end
 end
 
@@ -196,7 +320,7 @@ calc
      ... = g (f x2) : H1
      ... = x2       : H x2a
 
-theorem left_inv_on_compose {f' : Y → X} {g' : Z → Y} {g : Y → Z} {f : X → Y}
+theorem left_inv_on_comp {f' : Y → X} {g' : Z → Y} {g : Y → Z} {f : X → Y}
    {a : set X} {b : set Y} (fab : maps_to f a b)
     (Hf : left_inv_on f' f a) (Hg : left_inv_on g' g b) : left_inv_on (f' ∘ g') (g ∘ f) a :=
 take x : X,
@@ -229,10 +353,10 @@ have gya : g y ∈ a, from gba yb,
 have H1 : f (g y) = y, from H yb,
 exists.intro (g y) (and.intro gya H1)
 
-theorem right_inv_on_compose {f' : Y → X} {g' : Z → Y} {g : Y → Z} {f : X → Y}
+theorem right_inv_on_comp {f' : Y → X} {g' : Z → Y} {g : Y → Z} {f : X → Y}
    {c : set Z} {b : set Y} (g'cb : maps_to g' c b)
     (Hf : right_inv_on f' f b) (Hg : right_inv_on g' g c) : right_inv_on (f' ∘ g') (g ∘ f) c :=
-left_inv_on_compose g'cb Hg Hf
+left_inv_on_comp g'cb Hg Hf
 
 theorem right_inv_on_of_inj_on_of_left_inv_on {f : X → Y} {g : Y → X} {a : set X} {b : set Y}
     (fab : maps_to f a b) (gba : maps_to g b a) (injf : inj_on f a) (lfg : left_inv_on f g b) :

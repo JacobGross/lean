@@ -1,13 +1,13 @@
 /-
 Copyright (c) 2014 Floris van Doorn. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Author: Floris van Doorn
+Authors: Floris van Doorn, Jakob von Raumer
 
 Ported from Coq HoTT
 Theorems about products
 -/
 
-open eq equiv is_equiv is_trunc prod prod.ops unit equiv.ops
+open eq equiv is_equiv is_trunc prod prod.ops unit
 
 variables {A A' B B' C D : Type} {P Q : A → Type}
           {a a' a'' : A} {b b₁ b₂ b' b'' : B} {u v w : A × B}
@@ -127,6 +127,16 @@ namespace prod
     : ap (prod_functor f g) (prod_eq p q) = prod_eq (ap f p) (ap g q) :=
   by induction u; induction v; esimp at *; induction p; induction q; reflexivity
 
+  /- Helpers for functions of two arguments -/
+  definition ap_diagonal {a a' : A} (p : a = a')
+    : ap (λx : A, (x,x)) p = prod_eq p p :=
+  by cases p; constructor
+
+  definition ap_binary (m : A → B → C) (p : a = a') (q : b = b')
+    : ap (λz : A × B, m z.1 z.2) (prod_eq p q)
+    = (ap (m a) q) ⬝ (ap (λx : A, m x b') p) :=
+  by cases p; cases q; constructor
+
   /- Equivalences -/
 
   definition is_equiv_prod_functor [instance] [constructor] [H : is_equiv f] [H : is_equiv g]
@@ -181,6 +191,15 @@ namespace prod
 
   definition prod_unit_equiv [constructor] (A : Type) : A × unit ≃ A :=
   !prod_contr_equiv
+
+  definition prod_empty_equiv (A : Type) : A × empty ≃ empty :=
+  begin
+    fapply equiv.MK,
+    { intro x, cases x with a e, cases e },
+    { intro e, cases e },
+    { intro e, cases e },
+    { intro x, cases x with a e, cases e }
+  end
 
   /- Universal mapping properties -/
   definition is_equiv_prod_rec [instance] [constructor] (P : A × B → Type)

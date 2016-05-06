@@ -10,11 +10,11 @@ Author: Leonardo de Moura
 #include <limits>
 #include <algorithm>
 #include "util/interrupt.h"
-#include "util/luaref.h"
 #include "util/lazy_list_fn.h"
 #include "util/sstream.h"
 #include "util/lbool.h"
 #include "util/flet.h"
+#include "util/fresh_name.h"
 #include "util/sexpr/option_declarations.h"
 #include "kernel/for_each_fn.h"
 #include "kernel/abstract.h"
@@ -30,7 +30,6 @@ Author: Leonardo de Moura
 #include "library/unifier.h"
 #include "library/reducible.h"
 #include "library/unifier_plugin.h"
-#include "library/kernel_bindings.h"
 #include "library/print.h"
 #include "library/expr_lt.h"
 #include "library/projection.h"
@@ -38,10 +37,6 @@ Author: Leonardo de Moura
 
 #ifndef LEAN_DEFAULT_UNIFIER_MAX_STEPS
 #define LEAN_DEFAULT_UNIFIER_MAX_STEPS 20000
-#endif
-
-#ifndef LEAN_DEFAULT_UNIFIER_COMPUTATION
-#define LEAN_DEFAULT_UNIFIER_COMPUTATION false
 #endif
 
 #ifndef LEAN_DEFAULT_UNIFIER_EXPENSIVE_CLASSES
@@ -62,7 +57,6 @@ Author: Leonardo de Moura
 
 namespace lean {
 static name * g_unifier_max_steps               = nullptr;
-static name * g_unifier_computation             = nullptr;
 static name * g_unifier_expensive_classes       = nullptr;
 static name * g_unifier_conservative            = nullptr;
 static name * g_unifier_nonchronological        = nullptr;
@@ -74,10 +68,6 @@ unsigned get_unifier_max_steps(options const & opts) {
 
 unsigned get_unifier_normalizer_max_steps(options const & opts) {
     return opts.get_unsigned(*g_unifier_normalizer_max_steps, LEAN_DEFAULT_UNIFIER_NORMALIZER_MAX_STEPS);
-}
-
-bool get_unifier_computation(options const & opts) {
-    return opts.get_bool(*g_unifier_computation, LEAN_DEFAULT_UNIFIER_COMPUTATION);
 }
 
 bool get_unifier_expensive_classes(options const & opts) {
@@ -96,7 +86,6 @@ unifier_config::unifier_config(bool use_exceptions, bool discard):
     m_use_exceptions(use_exceptions),
     m_max_steps(LEAN_DEFAULT_UNIFIER_MAX_STEPS),
     m_normalizer_max_steps(LEAN_DEFAULT_UNIFIER_NORMALIZER_MAX_STEPS),
-    m_computation(LEAN_DEFAULT_UNIFIER_COMPUTATION),
     m_expensive_classes(LEAN_DEFAULT_UNIFIER_EXPENSIVE_CLASSES),
     m_discard(discard),
     m_nonchronological(LEAN_DEFAULT_UNIFIER_NONCHRONOLOGICAL) {
@@ -109,7 +98,6 @@ unifier_config::unifier_config(options const & o, bool use_exceptions, bool disc
     m_use_exceptions(use_exceptions),
     m_max_steps(get_unifier_max_steps(o)),
     m_normalizer_max_steps(get_unifier_normalizer_max_steps(o)),
-    m_computation(get_unifier_computation(o)),
     m_expensive_classes(get_unifier_expensive_classes(o)),
     m_discard(discard),
     m_nonchronological(get_unifier_nonchronological(o)) {
@@ -300,15 +288,30 @@ unify_status unify_simple(substitution & s, constraint const & c) {
 
 static constraint * g_dont_care_cnstr = nullptr;
 static unsigned g_group_size = 1u << 28;
-constexpr unsigned g_num_groups = 8;
-static unsigned g_cnstr_group_first_index[g_num_groups] = { 0, g_group_size, 2*g_group_size, 3*g_group_size, 4*g_group_size, 5*g_group_size, 6*g_group_size, 7*g_group_size};
+constexpr unsigned g_num_groups = 9;
+static unsigned g_cnstr_group_first_index[g_num_groups] = { 0, g_group_size, 2*g_group_size, 3*g_group_size, 4*g_group_size, 5*g_group_size, 6*g_group_size, 7*g_group_size, 8*g_group_size};
 static unsigned get_group_first_index(cnstr_group g) {
     return g_cnstr_group_first_index[static_cast<unsigned>(g)];
 }
-static cnstr_group to_cnstr_group(unsigned d) {
-    if (d >= g_num_groups)
-        d = g_num_groups-1;
-    return static_cast<cnstr_group>(d);
+
+static unsigned get_group_last_index(cnstr_group g) {
+    unsigned idx = static_cast<unsigned>(g);
+    lean_assert(idx < g_num_groups);
+    if (idx == g_num_groups - 1) {
+        lean_assert(g == cnstr_group::MaxDelayed);
+        return std::numeric_limits<unsigned>::max() - g_group_size;
+    } else {
+        lean_assert(idx < g_num_groups - 1);
+        return g_cnstr_group_first_index[idx+1] - 1;
+    }
+}
+
+static cnstr_group to_cnstr_group(unsigned cidx) {
+    for (unsigned i = 1; i < g_num_groups; i++) {
+        if (cidx < g_cnstr_group_first_index[i])
+            return static_cast<cnstr_group>(i);
+    }
+    return cnstr_group::MaxDelayed;
 }
 
 /** \brief Convert choice constraint delay factor to cnstr_group */
@@ -337,10 +340,9 @@ struct unifier_fn {
     typedef rb_map<expr, pair<expr, justification>, expr_quick_cmp> expr_map;
     typedef std::shared_ptr<type_checker> type_checker_ptr;
     environment      m_env;
-    name_generator   m_ngen;
     substitution     m_subst;
     constraints      m_postponed; // constraints that will not be solved
-    owned_map        m_owned_map; // mapping from metavariable name m to delay factor of the choice constraint that owns m
+    owned_map        m_owned_map; // mapping from metavariable name m to constraint idx
     expr_map         m_type_map;  // auxiliary map for storing the type of the expr in choice constraints
     unifier_plugin   m_plugin;
     type_checker_ptr m_tc;
@@ -446,30 +448,22 @@ struct unifier_fn {
     optional<justification> m_conflict; //!< if different from none, then there is a conflict.
 
     unifier_fn(environment const & env, unsigned num_cs, constraint const * cs,
-               name_generator && ngen, substitution const & s,
+               substitution const & s,
                unifier_config const & cfg):
-        m_env(env), m_ngen(ngen), m_subst(s), m_plugin(get_unifier_plugin(env)),
+        m_env(env), m_subst(s), m_plugin(get_unifier_plugin(env)),
         m_config(cfg), m_num_steps(0) {
         switch (m_config.m_kind) {
         case unifier_kind::Cheap:
-            m_tc = mk_opaque_type_checker(env, m_ngen.mk_child());
+            m_tc = mk_opaque_type_checker(env);
             m_flex_rigid_tc = m_tc;
-            m_config.m_computation = false;
-            break;
-        case unifier_kind::VeryConservative:
-            m_tc = mk_type_checker(env, m_ngen.mk_child(), UnfoldReducible);
-            m_flex_rigid_tc = m_tc;
-            m_config.m_computation = false;
             break;
         case unifier_kind::Conservative:
-            m_tc = mk_type_checker(env, m_ngen.mk_child(), UnfoldQuasireducible);
+            m_tc = mk_type_checker(env, UnfoldReducible);
             m_flex_rigid_tc = m_tc;
-            m_config.m_computation = false;
             break;
         case unifier_kind::Liberal:
-            m_tc = mk_type_checker(env, m_ngen.mk_child());
-            if (!cfg.m_computation)
-                m_flex_rigid_tc = mk_type_checker(env, m_ngen.mk_child(), UnfoldQuasireducible);
+            m_tc = mk_type_checker(env);
+            m_flex_rigid_tc = mk_type_checker(env, UnfoldReducible);
             break;
         default:
             lean_unreachable();
@@ -514,7 +508,7 @@ struct unifier_fn {
     void reset_conflict() { m_conflict = optional<justification>(); lean_assert(!in_conflict()); }
 
     expr mk_local_for(expr const & b) {
-        return mk_local(m_ngen.next(), binding_name(b), binding_domain(b), binding_info(b));
+        return mk_local(mk_fresh_name(), binding_name(b), binding_domain(b), binding_info(b));
     }
 
     /**
@@ -557,12 +551,44 @@ struct unifier_fn {
         return added;
     }
 
-    /** \brief Add constraint to the constraint queue */
+    /** \brief Add constraint to the constraint queue.
+
+        \remark We use FIFO policy for all but MaxDelayed group.
+     */
     unsigned add_cnstr(constraint const & c, cnstr_group g) {
-        unsigned cidx = m_next_cidx + get_group_first_index(g);
+        unsigned cidx;
+        if (g == cnstr_group::MaxDelayed) {
+            // MaxDelayed is a stack
+            cidx = get_group_last_index(g) - m_next_cidx;
+            /* Make sure there is at least one free space between any two MAX_DELAYED constraints.
+               We want to put constraints containing the variable owned by a MAX_DELAYED constraint c
+               after it and before the next MAX_DELAYED constraint c. */
+            m_next_cidx += 2;
+        } else {
+            cidx = m_next_cidx + get_group_first_index(g);
+            m_next_cidx++;
+        }
         m_cnstrs.insert(cnstr(c, cidx));
-        m_next_cidx++;
         return cidx;
+    }
+
+    /** \brief Add constraint \c to the constraint queue, but
+        make sure it occurs AFTER the the constraint with index \c cidx.
+
+        \remark We used this method to make sure \c c is going to be
+        processed after the constraint \c cidx. */
+    unsigned add_cnstr_after(constraint const & c, unsigned cidx) {
+        cnstr_group g = to_cnstr_group(cidx);
+        unsigned new_cidx;
+        if (g == cnstr_group::MaxDelayed) {
+            // See add_cnstr
+            new_cidx = cidx + 1;
+        } else {
+            new_cidx = m_next_cidx + get_group_first_index(g);
+            m_next_cidx++;
+        }
+        m_cnstrs.insert(cnstr(c, new_cidx));
+        return new_cidx;
     }
 
     /** \brief Check if \c t1 and \c t2 are definitionally equal, if they are not, set a conflict with justification \c j
@@ -642,14 +668,10 @@ struct unifier_fn {
     }
 
     expr flex_rigid_whnf(expr const & e, justification const & j, buffer<constraint> & cs) {
-        if (m_config.m_computation) {
-            return whnf(e, j, cs);
-        } else {
-            constraint_seq _cs;
-            expr r = m_flex_rigid_tc->whnf(e, _cs);
-            to_buffer(_cs, j, cs);
-            return r;
-        }
+        constraint_seq _cs;
+        expr r = m_flex_rigid_tc->whnf(e, _cs);
+        to_buffer(_cs, j, cs);
+        return r;
     }
 
     justification mk_assign_justification(expr const & m, expr const & m_type, expr const & v_type, justification const & j) {
@@ -1012,7 +1034,7 @@ struct unifier_fn {
         if (auto d = is_owned(c)) {
             // Metavariable in the constraint is owned by choice constraint.
             // So, we postpone this constraint.
-            add_cnstr(c, to_cnstr_group(*d+1));
+            add_cnstr_after(c, *d);
             return true;
         }
 
@@ -1042,14 +1064,9 @@ struct unifier_fn {
         }
 
         if (is_eq_deltas(lhs, rhs)) {
-            if (!split_delta(lhs) && is_type(lhs)) {
-                // If lhs (and consequently rhs) is a type, and not case-split is generated, then process delta constraint eagerly.
-                return process_delta(c);
-            } else {
-                // we need to create a backtracking point for this one
-                add_cnstr(c, cnstr_group::Basic);
-                return true;
-            }
+            // we need to create a backtracking point for this one
+            add_cnstr(c, cnstr_group::Basic);
+            return true;
         } else if (is_meta(lhs) && is_meta(rhs)) {
             // flex-flex constraints are delayed the most.
             unsigned cidx = add_cnstr(c, cnstr_group::FlexFlex);
@@ -1150,12 +1167,12 @@ struct unifier_fn {
 
     bool preprocess_choice_constraint(constraint c) {
         if (!cnstr_on_demand(c)) {
+            unsigned cidx = add_cnstr(c, get_choice_cnstr_group(c));
             if (cnstr_is_owner(c)) {
                 expr m = get_app_fn(cnstr_expr(c));
                 lean_assert(is_metavar(m));
-                m_owned_map.insert(mlocal_name(m), cnstr_delay_factor(c));
+                m_owned_map.insert(mlocal_name(m), cidx);
             }
-            add_cnstr(c, get_choice_cnstr_group(c));
             return true;
         } else {
             expr m = cnstr_expr(c);
@@ -1252,7 +1269,7 @@ struct unifier_fn {
     void display(std::ostream & out, justification const & j, unsigned indent = 0) {
         for (unsigned i = 0; i < indent; i++)
             out << " ";
-        out << j.pp(mk_print_formatter_factory()(m_env, options()), nullptr, m_subst) << "\n";
+        out << j.pp(mk_print_formatter_factory()(m_env, options(), m_tc->get_type_context()), nullptr, m_subst) << "\n";
         if (j.is_composite()) {
             display(out, composite_child1(j), indent+2);
             display(out, composite_child2(j), indent+2);
@@ -1539,7 +1556,7 @@ struct unifier_fn {
         optional<expr> mk_i;
         unsigned i = 0;
         while (is_pi(mk_type)) {
-            expr new_mvar = mk_app(mk_aux_metavar_for(m_ngen, mvar_type), meta_args);
+            expr new_mvar = mk_app(mk_aux_metavar_for(mvar_type), meta_args);
             mk = mk_app(mk, new_mvar);
             if (info->m_i == i)
                 mk_i = new_mvar;
@@ -1558,7 +1575,7 @@ struct unifier_fn {
 
     bool process_plugin_constraint(constraint const & c) {
         lean_assert(!is_choice_cnstr(c));
-        lazy_list<constraints> alts = m_plugin->solve(*m_tc, c, m_ngen.mk_child());
+        lazy_list<constraints> alts = m_plugin->solve(*m_tc, c);
         alts = append(alts, process_const_const_cnstr(c));
         return process_lazy_constraints(alts, c.get_justification());
     }
@@ -1584,7 +1601,7 @@ struct unifier_fn {
             return false;
         }
         auto m_type_jst             = m_subst.instantiate_metavars(m_type);
-        lazy_list<constraints> alts = fn(m, m_type_jst.first, m_subst, m_ngen.mk_child());
+        lazy_list<constraints> alts = fn(m, m_type_jst.first, m_subst);
         return process_lazy_constraints(alts, mk_composite1(c.get_justification(), m_type_jst.second));
     }
 
@@ -1673,8 +1690,7 @@ struct unifier_fn {
         expr lhs_fn     = get_app_fn(lhs);
         lean_assert(is_constant(lhs_fn));
         declaration d   = *m_env.find(const_name(lhs_fn));
-        return (m_config.m_kind == unifier_kind::Liberal &&
-                (m_config.m_computation || module::is_definition(m_env, d.get_name()) || is_at_least_quasireducible(m_env, d.get_name())));
+        return (m_config.m_kind == unifier_kind::Liberal && (module::is_definition(m_env, d.get_name()) || is_reducible(m_env, d.get_name())));
     }
 
     /**
@@ -1784,10 +1800,7 @@ struct unifier_fn {
         }
 
         type_checker & restricted_tc() {
-            if (u.m_config.m_computation)
-                return *u.m_tc;
-            else
-                return *u.m_flex_rigid_tc;
+            return *u.m_flex_rigid_tc;
         }
 
         /** \brief Return true if margs contains an expression \c e s.t. is_meta(e) */
@@ -1974,7 +1987,7 @@ struct unifier_fn {
                 if (is_local(margs[i]) && local_occurs_once(margs[i], margs)) {
                     n = mlocal_name(margs[i]);
                 } else {
-                    n = u.m_ngen.next();
+                    n = mk_fresh_name();
                 }
                 expr local = mk_local(n, binding_name(it), d, binding_info(it));
                 locals.push_back(local);
@@ -2013,13 +2026,13 @@ struct unifier_fn {
 
             // std::cout << "type: " << type << "\n";
             if (context_check(type, locals)) {
-                expr maux    = mk_metavar(u.m_ngen.next(), Pi(locals, type));
+                expr maux    = mk_metavar(mk_fresh_name(), Pi(locals, type));
                 // std::cout << "  >> " << maux << " : " << mlocal_type(maux) << "\n";
                 cs = mk_eq_cnstr(mk_app(maux, margs), arg, j) + cs;
                 return mk_app(maux, locals);
             } else {
-                expr maux_type   = mk_metavar(u.m_ngen.next(), Pi(locals, mk_sort(mk_meta_univ(u.m_ngen.next()))));
-                expr maux        = mk_metavar(u.m_ngen.next(), Pi(locals, mk_app(maux_type, locals)));
+                expr maux_type   = mk_metavar(mk_fresh_name(), Pi(locals, mk_sort(mk_meta_univ(mk_fresh_name()))));
+                expr maux        = mk_metavar(mk_fresh_name(), Pi(locals, mk_app(maux_type, locals)));
                 cs = mk_eq_cnstr(mk_app(maux, margs), arg, j) + cs;
                 return mk_app(maux, locals);
             }
@@ -2110,7 +2123,7 @@ struct unifier_fn {
                 expr rhs_A     = binding_domain(rhs);
                 expr A_type    = tc().infer(rhs_A, cs);
                 expr A         = mk_imitation_arg(rhs_A, A_type, locals, cs);
-                expr local     = mk_local(u.m_ngen.next(), binding_name(rhs), A, binding_info(rhs));
+                expr local     = mk_local(mk_fresh_name(), binding_name(rhs), A, binding_info(rhs));
                 locals.push_back(local);
                 margs.push_back(local);
                 expr rhs_B     = instantiate(binding_body(rhs), local);
@@ -2149,6 +2162,7 @@ struct unifier_fn {
                     mk_simple_projections();
                 mk_bindings_imitation();
                 break;
+            case expr_kind::Let:
             case expr_kind::Macro:
                 lean_unreachable(); // LCOV_EXCL_LINE
             case expr_kind::App:
@@ -2204,16 +2218,13 @@ struct unifier_fn {
     /** \brief When solving flex-rigid constraints lhs =?= rhs (lhs is of the form ?M a_1 ... a_n),
         we consider an additional case-split where rhs is put in weak-head-normal-form when
 
-        1- Option unifier.computation is true
-        2- At least one a_i is not a local constant
-        3- rhs contains a local constant that is not equal to any a_i.
+        1- At least one a_i is not a local constant
+        2- rhs contains a local constant that is not equal to any a_i.
     */
     bool use_flex_rigid_whnf_split(expr const & lhs, expr const & rhs) {
         lean_assert(is_meta(lhs));
         if (m_config.m_kind != unifier_kind::Liberal)
             return false;
-        if (m_config.m_computation)
-            return true; // if unifier.computation is true, we always consider the additional whnf split
         // TODO(Leo): perhaps we should use the following heuristic only for coercions
         // automatically generated by structure manager
         if (is_coercion(m_env, get_app_fn(rhs)))
@@ -2357,7 +2368,7 @@ struct unifier_fn {
         if (optional<expr> lhs_type = infer(lhs, cs)) {
             expr new_type = Pi(shared_locals, *lhs_type);
             if (!has_local(new_type)) {
-                expr new_mvar = mk_metavar(m_ngen.next(), new_type);
+                expr new_mvar = mk_metavar(mk_fresh_name(), new_type);
                 expr new_val  = mk_app(new_mvar, shared_locals);
                 justification const & j = c.get_justification();
                 return
@@ -2446,7 +2457,7 @@ struct unifier_fn {
             if (found_lhs) {
                 // rhs is of the form max(rest, lhs)
                 // Solution is lhs := max(rest, ?u) where ?u is fresh metavariable
-                r = mk_meta_univ(m_ngen.next());
+                r = mk_meta_univ(mk_fresh_name());
                 rest.push_back(r);
                 unsigned i = rest.size();
                 while (i > 0) {
@@ -2652,6 +2663,10 @@ struct unifier_fn {
         return Continue;
     }
 
+    void cut_search() {
+        m_case_splits.clear();
+    }
+
     /** \brief Process the next constraint in the constraint queue m_cnstrs */
     bool process_next() {
         lean_assert(!m_cnstrs.empty());
@@ -2665,7 +2680,11 @@ struct unifier_fn {
             postpone(c);
             return true;
         }
-        lean_trace("unifier", tout() << "process_next: " << c << "\n";);
+        if (cidx >= get_group_first_index(cnstr_group::Checkpoint) &&
+            cidx < get_group_first_index(cnstr_group::FlexFlex)) {
+            cut_search();
+        }
+        lean_trace("unifier", tout() << "process_next: " << cidx << " " << static_cast<unsigned>(to_cnstr_group(cidx)) << " " << c << "\n";);
         m_cnstrs.erase_min();
         if (is_choice_cnstr(c)) {
             return process_choice_constraint(c);
@@ -2707,7 +2726,7 @@ struct unifier_fn {
                 }
             } else {
                 lean_assert(is_eq_cnstr(c));
-                if (is_delta_cnstr(c)) {
+                if (is_delta_cnstr(c) && (!modified || has_expr_metavar_relaxed(cnstr_lhs_expr(c)) || has_expr_metavar_relaxed(cnstr_rhs_expr(c)))) {
                     return process_delta(c);
                 } else if (modified) {
                     return is_def_eq(cnstr_lhs_expr(c), cnstr_rhs_expr(c), c.get_justification());
@@ -2715,7 +2734,7 @@ struct unifier_fn {
                     // Metavariable in the constraint is owned by choice constraint.
                     // choice constraint was postponed... since c was not modifed
                     // So, we should postpone this one too.
-                    add_cnstr(c, to_cnstr_group(*d+1));
+                    add_cnstr_after(c, *d);
                     return true;
                 } else if (is_flex_rigid(c)) {
                     return process_flex_rigid(c);
@@ -2802,17 +2821,17 @@ unify_result_seq unify(std::shared_ptr<unifier_fn> u) {
     }
 }
 
-unify_result_seq unify(environment const & env,  unsigned num_cs, constraint const * cs, name_generator && ngen,
+unify_result_seq unify(environment const & env,  unsigned num_cs, constraint const * cs,
                        substitution const & s, unifier_config const & cfg) {
-    return unify(std::make_shared<unifier_fn>(env, num_cs, cs, std::move(ngen), s, cfg));
+    return unify(std::make_shared<unifier_fn>(env, num_cs, cs, s, cfg));
 }
 
-unify_result_seq unify(environment const & env, expr const & lhs, expr const & rhs, name_generator && ngen,
+unify_result_seq unify(environment const & env, expr const & lhs, expr const & rhs,
                        substitution const & s, unifier_config const & cfg) {
     substitution new_s = s;
     expr _lhs = new_s.instantiate(lhs);
     expr _rhs = new_s.instantiate(rhs);
-    auto u = std::make_shared<unifier_fn>(env, 0, nullptr, std::move(ngen), new_s, cfg);
+    auto u = std::make_shared<unifier_fn>(env, 0, nullptr, new_s, cfg);
     constraint_seq cs;
     if (!u->m_tc->is_def_eq(_lhs, _rhs, justification(), cs) || !u->process_constraints(cs)) {
         return unify_result_seq();
@@ -2821,176 +2840,16 @@ unify_result_seq unify(environment const & env, expr const & lhs, expr const & r
     }
 }
 
-static int unify_simple(lua_State * L) {
-    int nargs = lua_gettop(L);
-    unify_status r;
-    if (nargs == 2)
-        r = unify_simple(to_substitution(L, 1), to_constraint(L, 2));
-    else if (nargs == 3 && is_expr(L, 2))
-        r = unify_simple(to_substitution(L, 1), to_expr(L, 2), to_expr(L, 3), justification());
-    else if (nargs == 3 && is_level(L, 2))
-        r = unify_simple(to_substitution(L, 1), to_level(L, 2), to_level(L, 3), justification());
-    else if (is_expr(L, 2))
-        r = unify_simple(to_substitution(L, 1), to_expr(L, 2), to_expr(L, 3), to_justification(L, 4));
-    else
-        r = unify_simple(to_substitution(L, 1), to_level(L, 2), to_level(L, 3), to_justification(L, 4));
-    return push_integer(L, static_cast<unsigned>(r));
-}
-
-DECL_UDATA(unify_result_seq)
-
-static const struct luaL_Reg unify_result_seq_m[] = {
-    {"__gc", unify_result_seq_gc},
-    {0, 0}
-};
-
-static int unify_result_seq_next(lua_State * L) {
-    unify_result_seq seq = to_unify_result_seq(L, lua_upvalueindex(1));
-    unify_result_seq::maybe_pair p;
-    p = seq.pull();
-    if (p) {
-        push_unify_result_seq(L, p->second);
-        lua_replace(L, lua_upvalueindex(1));
-        push_substitution(L, p->first.first);
-        // TODO(Leo): return postponed constraints
-    } else {
-        lua_pushnil(L);
-    }
-    return 1;
-}
-
-static int push_unify_result_seq_it(lua_State * L, unify_result_seq const & seq) {
-    push_unify_result_seq(L, seq);
-    lua_pushcclosure(L, &safe_function<unify_result_seq_next>, 1); // create closure with 1 upvalue
-    return 1;
-}
-
-static void to_constraint_buffer(lua_State * L, int idx, buffer<constraint> & cs) {
-    luaL_checktype(L, idx, LUA_TTABLE);
-    lua_pushvalue(L, idx); // put table on top of the stack
-    int n = objlen(L, idx);
-    for (int i = 1; i <= n; i++) {
-        lua_rawgeti(L, -1, i);
-        cs.push_back(to_constraint(L, -1));
-        lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
-}
-
-#if 0
-static constraints to_constraints(lua_State * L, int idx) {
-    buffer<constraint> cs;
-    to_constraint_buffer(L, idx, cs);
-    return to_list(cs.begin(), cs.end());
-}
-
-static unifier_plugin to_unifier_plugin(lua_State * L, int idx) {
-    luaL_checktype(L, idx, LUA_TFUNCTION); // user-fun
-    luaref f(L, idx);
-    return unifier_plugin([=](constraint const & c, name_generator && ngen) {
-            lua_State * L = f.get_state();
-            f.push();
-            push_constraint(L, c);
-            push_name_generator(L, ngen);
-            pcall(L, 2, 1, 0);
-            lazy_list<constraints> r;
-            if (is_constraint(L, -1)) {
-                // single constraint
-                r = lazy_list<constraints>(constraints(to_constraint(L, -1)));
-            } else if (lua_istable(L, -1)) {
-                int num = objlen(L, -1);
-                if (num == 0) {
-                    // empty table
-                    r = lazy_list<constraints>();
-                } else {
-                    lua_rawgeti(L, -1, 1);
-                    if (is_constraint(L, -1)) {
-                        // array of constraints case
-                        lua_pop(L, 1);
-                        r = lazy_list<constraints>(to_constraints(L, -1));
-                    } else {
-                        lua_pop(L, 1);
-                        buffer<constraints> css;
-                        // array of array of constraints
-                        for (int i = 1; i <= num; i++) {
-                            lua_rawgeti(L, -1, i);
-                            css.push_back(to_constraints(L, -1));
-                            lua_pop(L, 1);
-                        }
-                        r = to_lazy(to_list(css.begin(), css.end()));
-                    }
-                }
-            } else if (lua_isnil(L, -1)) {
-                // nil case
-                r = lazy_list<constraints>();
-            } else {
-                throw exception("invalid unifier plugin, the result value must be a constrant, "
-                                "nil, an array of constraints, or an array of arrays of constraints");
-            }
-            lua_pop(L, 1);
-            return r;
-        });
-}
-#endif
-
-static name * g_tmp_prefix = nullptr;
-
-static int unify(lua_State * L) {
-    int nargs = lua_gettop(L);
-    unify_result_seq r;
-    environment const & env = to_environment(L, 1);
-    if (is_expr(L, 2)) {
-        if (nargs == 6)
-            r = unify(env, to_expr(L, 2), to_expr(L, 3), to_name_generator(L, 4).mk_child(), to_substitution(L, 5),
-                      unifier_config(to_options(L, 6)));
-        else if (nargs == 5)
-            r = unify(env, to_expr(L, 2), to_expr(L, 3), to_name_generator(L, 4).mk_child(), to_substitution(L, 5));
-        else
-            r = unify(env, to_expr(L, 2), to_expr(L, 3), to_name_generator(L, 4).mk_child());
-    } else {
-        buffer<constraint> cs;
-        to_constraint_buffer(L, 2, cs);
-        if (nargs == 5)
-            r = unify(env, cs.size(), cs.data(), to_name_generator(L, 3).mk_child(), to_substitution(L, 4),
-                      unifier_config(to_options(L, 5)));
-        else if (nargs == 4)
-            r = unify(env, cs.size(), cs.data(), to_name_generator(L, 3).mk_child(), to_substitution(L, 4));
-        else
-            r = unify(env, cs.size(), cs.data(), to_name_generator(L, 3).mk_child());
-    }
-    return push_unify_result_seq_it(L, r);
-}
-
-void open_unifier(lua_State * L) {
-    luaL_newmetatable(L, unify_result_seq_mt);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    setfuncs(L, unify_result_seq_m, 0);
-    SET_GLOBAL_FUN(unify_result_seq_pred, "is_unify_result_seq");
-
-    SET_GLOBAL_FUN(unify_simple,  "unify_simple");
-    SET_GLOBAL_FUN(unify,         "unify");
-
-    lua_newtable(L);
-    SET_ENUM("Solved",       unify_status::Solved);
-    SET_ENUM("Failed",       unify_status::Failed);
-    SET_ENUM("Unsupported",  unify_status::Unsupported);
-    lua_setglobal(L, "unify_status");
-}
-
 void initialize_unifier() {
     register_trace_class(name{"unifier"});
     g_unifier_max_steps            = new name{"unifier", "max_steps"};
     g_unifier_normalizer_max_steps = new name{"unifier", "normalizer_max_steps"};
-    g_unifier_computation          = new name{"unifier", "computation"};
     g_unifier_expensive_classes    = new name{"unifier", "expensive_classes"};
     g_unifier_conservative         = new name{"unifier", "conservative"};
     g_unifier_nonchronological     = new name{"unifier", "nonchronological"};
 
     register_unsigned_option(*g_unifier_max_steps, LEAN_DEFAULT_UNIFIER_MAX_STEPS, "(unifier) maximum number of steps");
     register_unsigned_option(*g_unifier_normalizer_max_steps, LEAN_DEFAULT_UNIFIER_NORMALIZER_MAX_STEPS, "(unifier) maximum number of steps the normalization procedure may perform when invoked by the unifier");
-    register_bool_option(*g_unifier_computation, LEAN_DEFAULT_UNIFIER_COMPUTATION,
-                         "(unifier) always case-split on reduction/computational steps when solving flex-rigid and delta-delta constraints");
     register_bool_option(*g_unifier_expensive_classes, LEAN_DEFAULT_UNIFIER_EXPENSIVE_CLASSES,
                          "(unifier) use \"full\" higher-order unification when solving class instances");
     register_bool_option(*g_unifier_conservative, LEAN_DEFAULT_UNIFIER_CONSERVATIVE,
@@ -2999,15 +2858,12 @@ void initialize_unifier() {
                          "(unifier) enable/disable nonchronological backtracking in the unifier (this option is only available for debugging and benchmarking purposes, and running experiments)");
 
     g_dont_care_cnstr = new constraint(mk_eq_cnstr(expr(), expr(), justification()));
-    g_tmp_prefix      = new name(name::mk_internal_unique_name());
 }
 
 void finalize_unifier() {
-    delete g_tmp_prefix;
     delete g_dont_care_cnstr;
     delete g_unifier_max_steps;
     delete g_unifier_normalizer_max_steps;
-    delete g_unifier_computation;
     delete g_unifier_expensive_classes;
     delete g_unifier_conservative;
     delete g_unifier_nonchronological;

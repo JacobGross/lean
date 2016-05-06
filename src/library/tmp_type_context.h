@@ -44,8 +44,6 @@ class tmp_type_context : public type_context {
     void init(environment const & env, reducible_behavior b);
 public:
     tmp_type_context(environment const & env, options const & o, reducible_behavior b = UnfoldReducible);
-    tmp_type_context(environment const & env, options const & o,
-                     tmp_local_generator & gen, reducible_behavior b = UnfoldReducible);
     virtual ~tmp_type_context();
 
     /** \brief Reset the state: backtracking stack, indices and assignment. */
@@ -77,8 +75,9 @@ public:
     virtual level mk_uvar();
     virtual expr mk_mvar(expr const &);
 
-    virtual void push();
-    virtual void pop();
+    virtual void push_core();
+    virtual void pop_core();
+    virtual unsigned get_num_check_points() const;
     virtual void commit();
 
     bool is_uvar_assigned(unsigned idx) const {
@@ -91,4 +90,24 @@ public:
         return static_cast<bool>(m_eassignment[idx]);
     }
 };
+
+class tmp_type_context_pool {
+public:
+    virtual tmp_type_context * mk_tmp_type_context() =0;
+    virtual void recycle_tmp_type_context(tmp_type_context * tmp_tctx) =0;
+
+    virtual ~tmp_type_context_pool() {}
+};
+
+class default_tmp_type_context_pool : public tmp_type_context_pool {
+    environment m_env;
+    options     m_options;
+public:
+    default_tmp_type_context_pool(environment const & env, options const & o):
+        m_env(env), m_options(o) {}
+
+    virtual tmp_type_context * mk_tmp_type_context() override { return new tmp_type_context(m_env, m_options); }
+    virtual void recycle_tmp_type_context(tmp_type_context * tmp_tctx) override { delete tmp_tctx; }
+};
+
 }

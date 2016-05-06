@@ -9,7 +9,7 @@ import data.int.basic data.int.order data.int.div algebra.group_power data.nat.p
 
 namespace int
 
-definition int_has_pow_nat [reducible] [instance] [priority int.prio] : has_pow_nat int :=
+definition int_has_pow_nat [instance] [priority int.prio] : has_pow_nat int :=
 has_pow_nat.mk has_pow_nat.pow_nat
 
 /-
@@ -23,7 +23,7 @@ theorem of_nat_pow (a n : ℕ) : of_nat (a^n) = (of_nat a)^n :=
 begin
   induction n with n ih,
     apply eq.refl,
-  rewrite [pow_succ, pow_succ, of_nat_mul, ih]
+  krewrite [pow_succ, pow_succ, of_nat_mul, ih]
 end
 
 end int

@@ -7,9 +7,7 @@ Author: Leonardo de Moura
 #pragma once
 #include <utility>
 #include <functional>
-#include "util/lua.h"
 #include "util/lazy_list.h"
-#include "util/name_generator.h"
 #include "util/sexpr/options.h"
 #include "kernel/constraint.h"
 #include "kernel/environment.h"
@@ -17,10 +15,9 @@ Author: Leonardo de Moura
 
 namespace lean {
 unsigned get_unifier_max_steps(options const & opts);
-bool get_unifier_computation(options const & opts);
 
 bool is_simple_meta(expr const & e);
-expr mk_aux_metavar_for(name_generator & ngen, expr const & t);
+expr mk_aux_metavar_for(expr const & t);
 
 enum class unify_status { Solved, Failed, Unsupported };
 /**
@@ -32,27 +29,21 @@ unify_status unify_simple(substitution & s, expr const & lhs, expr const & rhs, 
 unify_status unify_simple(substitution & s, level const & lhs, level const & rhs, justification const & j);
 unify_status unify_simple(substitution & s, constraint const & c);
 
-enum class unifier_kind { Cheap, VeryConservative, Conservative, Liberal };
+enum class unifier_kind { Cheap, Conservative, Liberal };
 
 struct unifier_config {
     bool     m_use_exceptions;
     unsigned m_max_steps;
     unsigned m_normalizer_max_steps;
-    bool     m_computation;
     bool     m_expensive_classes;
     // If m_discard is true, then constraints that cannot be solved are discarded (or incomplete methods are used)
     // If m_discard is false, unify returns the set of constraints that could not be handled.
     bool     m_discard;
     // If m_mind == Conservative, then the following restrictions are imposed:
-    //     - All constants that are not at least marked as Quasireducible as treated as
+    //     - All constants that are not at least marked as Semireducible are treated as
     //       opaque.
     //     - Disables case-split on delta-delta constraints.
     //     - Disables reduction case-split on flex-rigid constraints.
-    //
-    // If m_kind == VeryConservative, then
-    //     - More restrictive than Conservative,
-    //     - All constants that are not at least marked as Reducible as treated as
-    //       opaque.
     //
     // If m_kind == Cheap is true, then expensive case-analysis is not performed (e.g., delta).
     // It is more restrictive than VeryConservative
@@ -75,9 +66,9 @@ struct unifier_config {
 /** \brief The unification procedures produce a lazy list of pair substitution + constraints that could not be solved. */
 typedef lazy_list<pair<substitution, constraints>> unify_result_seq;
 
-unify_result_seq unify(environment const & env, unsigned num_cs, constraint const * cs, name_generator && ngen,
+unify_result_seq unify(environment const & env, unsigned num_cs, constraint const * cs,
                        substitution const & s = substitution(), unifier_config const & c = unifier_config());
-unify_result_seq unify(environment const & env, expr const & lhs, expr const & rhs, name_generator && ngen,
+unify_result_seq unify(environment const & env, expr const & lhs, expr const & rhs,
                        substitution const & s = substitution(), unifier_config const & c = unifier_config());
 
 /**
@@ -102,13 +93,16 @@ unify_result_seq unify(environment const & env, expr const & lhs, expr const & r
 
     7) Epilogue: constraints that must be solved before FlexFlex are discarded/postponed.
 
-    8) FlexFlex:  (?m1 ...) =?= (?m2 ...) we don't try to solve this constraint, we delay them and hope the other
+    8) Checkpoint: unifier performs a prolog-like cut for any constraint in this group.
+
+    9) FlexFlex:  (?m1 ...) =?= (?m2 ...) we don't try to solve this constraint, we delay them and hope the other
        ones instantiate ?m1 or ?m2. If this kind of constraint is the next to be processed in the queue, then
        we simply discard it (or save it and return to the caller as residue).
 
-    9) MaxDelayed: maximally delayed constraint group
+    10) MaxDelayed: maximally delayed constraint group
 */
-enum class cnstr_group { Basic = 0, FlexRigid, PluginDelayed, DelayedChoice, ClassInstance, Epilogue, FlexFlex, MaxDelayed };
+enum class cnstr_group { Basic = 0, FlexRigid, PluginDelayed, DelayedChoice, ClassInstance,
+                         Epilogue, Checkpoint, FlexFlex, MaxDelayed };
 inline unsigned to_delay_factor(cnstr_group g) { return static_cast<unsigned>(g); }
 
 class unifier_exception : public exception {
@@ -121,8 +115,6 @@ public:
     justification const & get_justification() const { return m_jst; }
     substitution const & get_substitution() const { return m_subst; }
 };
-
-void open_unifier(lua_State * L);
 
 void initialize_unifier();
 void finalize_unifier();

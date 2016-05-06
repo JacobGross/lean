@@ -23,7 +23,7 @@ section
   variable [s : weak_order A]
   include s
 
-  definition le.refl (a : A) : a ≤ a := !weak_order.le_refl
+  definition le.refl [refl] (a : A) : a ≤ a := !weak_order.le_refl
 
   definition le_of_eq {a b : A} (H : a = b) : a ≤ b := H ▸ le.refl a
 
@@ -40,8 +40,20 @@ end
 structure linear_weak_order [class] (A : Type) extends weak_order A :=
 (le_total : Πa b, le a b ⊎ le b a)
 
-definition le.total [s : linear_weak_order A] (a b : A) : a ≤ b ⊎ b ≤ a :=
-!linear_weak_order.le_total
+section
+  variables [linear_weak_order A]
+
+  theorem le.total (a b : A) : a ≤ b ⊎ b ≤ a := !linear_weak_order.le_total
+
+  theorem le_of_not_ge {a b : A} (H : ¬ a ≥ b) : a ≤ b := sum.resolve_left !le.total H
+
+  definition le_by_cases (a b : A) {P : Type} (H1 : a ≤ b → P) (H2 : b ≤ a → P) : P :=
+  begin
+    cases (le.total a b) with H H,
+    { exact H1 H},
+    { exact H2 H}
+  end
+end
 
 /- strict orders -/
 
@@ -109,7 +121,7 @@ section
   private theorem lt_trans (s' : order_pair A) (a b c: A) (lt_ab : a < b) (lt_bc : b < c) : a < c :=
     lt_of_lt_of_le lt_ab (le_of_lt lt_bc)
 
-  definition order_pair.to_strict_order [trans_instance] [reducible] : strict_order A :=
+  definition order_pair.to_strict_order [trans_instance] : strict_order A :=
   ⦃ strict_order, s, lt_irrefl := lt_irrefl s, lt_trans := lt_trans s ⦄
 
   definition gt_of_gt_of_ge [trans] (H1 : a > b) (H2 : b ≥ c) : a > c := lt_of_le_of_lt H2 H1
@@ -179,8 +191,7 @@ have ne_ac : a ≠ c, from
   show empty, from ne_of_lt' lt_bc eq_bc,
 show a < c, from iff.mpr (lt_iff_le_prod_ne) (pair le_ac ne_ac)
 
-definition strong_order_pair.to_order_pair [trans_instance] [reducible]
-    [s : strong_order_pair A] : order_pair A :=
+definition strong_order_pair.to_order_pair [trans_instance] [s : strong_order_pair A] : order_pair A :=
 ⦃ order_pair, s,
   lt_irrefl := lt_irrefl',
   le_of_lt := le_of_lt',
@@ -194,7 +205,7 @@ structure linear_order_pair [class] (A : Type) extends order_pair A, linear_weak
 structure linear_strong_order_pair [class] (A : Type) extends strong_order_pair A,
     linear_weak_order A
 
-definition linear_strong_order_pair.to_linear_order_pair [trans_instance] [reducible]
+definition linear_strong_order_pair.to_linear_order_pair [trans_instance]
     [s : linear_strong_order_pair A] : linear_order_pair A :=
 ⦃ linear_order_pair, s, strong_order_pair.to_order_pair ⦄
 
@@ -308,13 +319,13 @@ section
 
   theorem min_le_left (a b : A) : min a b ≤ a :=
   by_cases
-    (assume H : a ≤ b, by rewrite [↑min, if_pos H]; apply le.refl)
+    (assume H : a ≤ b, by rewrite [↑min, if_pos H])
     (assume H : ¬ a ≤ b, by rewrite [↑min, if_neg H]; apply le_of_lt (lt_of_not_ge H))
 
   theorem min_le_right (a b : A) : min a b ≤ b :=
   by_cases
     (assume H : a ≤ b, by rewrite [↑min, if_pos H]; apply H)
-    (assume H : ¬ a ≤ b, by rewrite [↑min, if_neg H]; apply le.refl)
+    (assume H : ¬ a ≤ b, by rewrite [↑min, if_neg H])
 
   theorem le_min {a b c : A} (H₁ : c ≤ a) (H₂ : c ≤ b) : c ≤ min a b :=
   by_cases
@@ -324,11 +335,11 @@ section
   theorem le_max_left (a b : A) : a ≤ max a b :=
   by_cases
     (assume H : a ≤ b, by rewrite [↑max, if_pos H]; apply H)
-    (assume H : ¬ a ≤ b, by rewrite [↑max, if_neg H]; apply le.refl)
+    (assume H : ¬ a ≤ b, by rewrite [↑max, if_neg H])
 
   theorem le_max_right (a b : A) : b ≤ max a b :=
   by_cases
-    (assume H : a ≤ b, by rewrite [↑max, if_pos H]; apply le.refl)
+    (assume H : a ≤ b, by rewrite [↑max, if_pos H])
     (assume H : ¬ a ≤ b, by rewrite [↑max, if_neg H]; apply le_of_lt (lt_of_not_ge H))
 
   theorem max_le {a b c : A} (H₁ : a ≤ c) (H₂ : b ≤ c) : max a b ≤ c :=

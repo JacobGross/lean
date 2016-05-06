@@ -8,7 +8,7 @@ Declaration of the coequalizer
 
 import .quotient_functor types.equiv
 
-open quotient eq equiv equiv.ops is_trunc sigma sigma.ops
+open quotient eq equiv is_trunc sigma sigma.ops
 
 namespace coeq
 section
@@ -44,7 +44,7 @@ parameters {A B : Type.{u}} (f g : A → B)
 
   theorem rec_cp {P : coeq → Type} (P_i : Π(x : B), P (coeq_i x))
     (Pcp : Π(x : A), P_i (f x) =[cp x] P_i (g x))
-      (x : A) : apdo (rec P_i Pcp) (cp x) = Pcp x :=
+      (x : A) : apd (rec P_i Pcp) (cp x) = Pcp x :=
   !rec_eq_of_rel
 
   protected definition elim {P : Type} (P_i : B → P)
@@ -59,7 +59,7 @@ parameters {A B : Type.{u}} (f g : A → B)
     (x : A) : ap (elim P_i Pcp) (cp x) = Pcp x :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant (cp x)),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑elim,rec_cp],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑elim,rec_cp],
   end
 
   protected definition elim_type (P_i : B → Type)
@@ -74,12 +74,12 @@ parameters {A B : Type.{u}} (f g : A → B)
     (x : A) : transport (elim_type P_i Pcp) (cp x) = Pcp x :=
   by rewrite [tr_eq_cast_ap_fn,↑elim_type,elim_cp];apply cast_ua_fn
 
-  protected definition rec_hprop {P : coeq → Type} [H : Πx, is_hprop (P x)]
+  protected definition rec_prop {P : coeq → Type} [H : Πx, is_prop (P x)]
     (P_i : Π(x : B), P (coeq_i x)) (y : coeq) : P y :=
-  rec P_i (λa, !is_hprop.elimo) y
+  rec P_i (λa, !is_prop.elimo) y
 
-  protected definition elim_hprop {P : Type} [H : is_hprop P] (P_i : B → P) (y : coeq) : P :=
-  elim P_i (λa, !is_hprop.elim) y
+  protected definition elim_prop {P : Type} [H : is_prop P] (P_i : B → P) (y : coeq) : P :=
+  elim P_i (λa, !is_prop.elim) y
 
 end
 
@@ -116,22 +116,26 @@ section
 
   protected definition flattening : sigma P ≃ coeq F G :=
   begin
-    assert H : Πz, P z ≃ P' z,
-    { intro z, apply equiv_of_eq,
-      assert H1 : coeq.elim_type f g P_i Pcp = quotient.elim_type P_i Pr,
-      { change
-    quotient.rec P_i
-      (λb b' r, coeq_rel.cases_on r (λx, pathover_of_eq (ua (Pcp x))))
-  = quotient.rec P_i
-      (λb b' r, pathover_of_eq (ua (coeq_rel.cases_on r Pcp))),
-        assert H2 : Π⦃b b' : B⦄ (r : coeq_rel f g b b'),
-    coeq_rel.cases_on r (λx, pathover_of_eq (ua (Pcp x)))
-  = pathover_of_eq (ua (coeq_rel.cases_on r Pcp))
-    :> P_i b =[eq_of_rel (coeq_rel f g) r] P_i b',
-        { intros b b' r, cases r, reflexivity },
-       rewrite (eq_of_homotopy3 H2) },
-      apply ap10 H1 },
-    apply equiv.trans (sigma_equiv_sigma_id H),
+    have H : Πz, P z ≃ P' z,
+    begin
+      intro z, apply equiv_of_eq,
+      have H1 : coeq.elim_type f g P_i Pcp = quotient.elim_type P_i Pr,
+      begin
+        change
+           quotient.rec P_i
+           (λb b' r, coeq_rel.cases_on r (λx, pathover_of_eq (ua (Pcp x))))
+           = quotient.rec P_i
+           (λb b' r, pathover_of_eq (ua (coeq_rel.cases_on r Pcp))),
+        have H2 : Π⦃b b' : B⦄ (r : coeq_rel f g b b'),
+          coeq_rel.cases_on r (λx, pathover_of_eq (ua (Pcp x)))
+          = pathover_of_eq (ua (coeq_rel.cases_on r Pcp))
+            :> P_i b =[eq_of_rel (coeq_rel f g) r] P_i b',
+        begin intros b b' r, cases r, reflexivity end,
+        rewrite (eq_of_homotopy3 H2)
+      end,
+      apply ap10 H1
+    end,
+    apply equiv.trans (sigma_equiv_sigma_right H),
     apply equiv.trans !quotient.flattening.flattening_lemma,
     fapply quotient.equiv,
     { reflexivity },

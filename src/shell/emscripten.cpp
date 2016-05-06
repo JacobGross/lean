@@ -5,12 +5,10 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Leonardo de Moura
 */
 #include <string>
-#include "util/script_state.h"
-#include "util/thread_script_state.h"
 #include "library/module.h"
 #include "library/standard_kernel.h"
-#include "library/kernel_bindings.h"
-#include "library/error_handling/error_handling.h"
+#include "library/type_context.h"
+#include "library/error_handling.h"
 #include "frontends/lean/pp.h"
 #include "frontends/lean/parser.h"
 #include "init/init.h"
@@ -24,14 +22,10 @@ private:
     options opts;
     environment env;
     io_state ios;
-    script_state S;
-    set_environment set1;
-    set_io_state    set2;
 
 public:
     emscripten_shell() : trust_lvl(LEAN_BELIEVER_TRUST_LEVEL+1), num_threads(1), opts("flycheck", true),
-        env(mk_environment(trust_lvl)), ios(opts, lean::mk_pretty_formatter_factory()),
-        S(lean::get_thread_script_state()), set1(S, env), set2(S, ios) {
+        env(mk_environment(trust_lvl)), ios(opts, lean::mk_pretty_formatter_factory()) {
     }
 
     int import_module(std::string mname) {
@@ -43,7 +37,9 @@ public:
             env = import_modules(env, base, 1, &mod, num_threads, keep_proofs, ios);
         } catch (lean::exception & ex) {
             simple_pos_info_provider pp("import_module");
-            lean::display_error(diagnostic(env, ios), &pp, ex);
+            default_type_context tc(env, ios.get_options());
+            auto out = diagnostic(env, ios, tc);
+            lean::display_error(out, &pp, ex);
             return 1;
         }
         return 0;
@@ -60,7 +56,9 @@ public:
         } catch (lean::exception & ex) {
             simple_pos_info_provider pp(input_filename.c_str());
             ok = false;
-            lean::display_error(diagnostic(env, ios), &pp, ex);
+            default_type_context tc(env, ios.get_options());
+            auto out = diagnostic(env, ios, tc);
+            lean::display_error(out, &pp, ex);
         }
         return ok ? 0 : 1;
     }

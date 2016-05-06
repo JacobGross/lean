@@ -14,14 +14,14 @@ section semiring
 variable [s : semiring A]
 include s
 
-definition semiring_has_pow_nat [reducible] [instance] : has_pow_nat A :=
+definition semiring_has_pow_nat [instance] : has_pow_nat A :=
 monoid_has_pow_nat
 
 theorem zero_pow {m : ℕ} (mpos : m > 0) : 0^m = (0 : A) :=
 have h₁ : ∀ m : nat, (0 : A)^(succ m) = (0 : A),
   begin
     intro m, induction m,
-      rewrite pow_one,
+      krewrite pow_one,
       apply zero_mul
   end,
 obtain m' (h₂ : m = succ m'), from exists_eq_succ_of_pos mpos,
@@ -33,7 +33,7 @@ section integral_domain
 variable [s : integral_domain A]
 include s
 
-definition integral_domain_has_pow_nat [reducible] [instance] : has_pow_nat A :=
+definition integral_domain_has_pow_nat [instance] : has_pow_nat A :=
 monoid_has_pow_nat
 
 theorem eq_zero_of_pow_eq_zero {a : A} {m : ℕ} (H : a^m = 0) : a = 0 :=
@@ -45,7 +45,7 @@ or.elim (eq_zero_or_pos m)
       begin
         intro m,
         induction m with m ih,
-          {rewrite pow_one; intros; assumption},
+          {krewrite pow_one; intros; assumption},
         rewrite pow_succ,
         intro H,
         cases eq_zero_or_eq_zero_of_mul_eq_zero H with h₃ h₄,
@@ -73,7 +73,7 @@ or.elim (eq_zero_or_pos m)
       begin
         intro m,
         induction m with m ih,
-          {rewrite pow_one; assumption},
+          { krewrite pow_one; assumption },
         rewrite pow_succ,
         apply division_ring.mul_ne_zero H ih
       end,
@@ -110,11 +110,11 @@ begin
 end
 
 theorem pow_ge_one {x : A} (i : ℕ) (xge1 : x ≥ 1) : x^i ≥ 1 :=
-assert H : x^i ≥ 1^i, from pow_le_pow_of_le i (le_of_lt zero_lt_one) xge1,
+have H : x^i ≥ 1^i, from pow_le_pow_of_le i (le_of_lt zero_lt_one) xge1,
 by rewrite one_pow at H; exact H
 
 theorem pow_gt_one {x : A} {i : ℕ} (xgt1 : x > 1) (ipos : i > 0) : x^i > 1 :=
-assert xpos : x > 0, from lt.trans zero_lt_one xgt1,
+have xpos : x > 0, from lt.trans zero_lt_one xgt1,
 begin
   induction i with [i, ih],
     {exfalso, exact !lt.irrefl ipos},
@@ -124,21 +124,51 @@ begin
   apply le_of_lt xpos
 end
 
+theorem squared_lt_squared {x y : A} (H1 : 0 ≤ x) (H2 : x < y) : x^2 < y^2 :=
+by rewrite [*pow_two]; apply mul_self_lt_mul_self H1 H2
+
+theorem squared_le_squared {x y : A} (H1 : 0 ≤ x) (H2 : x ≤ y) : x^2 ≤ y^2 :=
+or.elim (lt_or_eq_of_le H2)
+  (assume xlty, le_of_lt (squared_lt_squared H1 xlty))
+  (assume xeqy, by rewrite xeqy; apply le.refl)
+
+theorem lt_of_squared_lt_squared {x y : A} (H1 : y ≥ 0) (H2 : x^2 < y^2) : x < y :=
+lt_of_not_ge (assume H : x ≥ y, not_le_of_gt H2 (squared_le_squared H1 H))
+
+theorem le_of_squared_le_squared {x y : A} (H1 : y ≥ 0) (H2 : x^2 ≤ y^2) : x ≤ y :=
+le_of_not_gt (assume H : x > y, not_lt_of_ge H2 (squared_lt_squared H1 H))
+
+theorem eq_of_squared_eq_squared_of_nonneg {x y : A} (H1 : x ≥ 0) (H2 : y ≥ 0) (H3 : x^2 = y^2) :
+  x = y :=
+lt.by_cases
+  (suppose x < y, absurd (eq.subst H3 (squared_lt_squared H1 this)) !lt.irrefl)
+  (suppose x = y, this)
+  (suppose x > y, absurd (eq.subst H3 (squared_lt_squared H2 this)) !lt.irrefl)
+
 end linear_ordered_semiring
 
 section decidable_linear_ordered_comm_ring
 variable [s : decidable_linear_ordered_comm_ring A]
 include s
 
-definition decidable_linear_ordered_comm_ring_has_pow_nat [reducible] [instance] : has_pow_nat A :=
+definition decidable_linear_ordered_comm_ring_has_pow_nat [instance] : has_pow_nat A :=
 monoid_has_pow_nat
 
 theorem abs_pow (a : A) (n : ℕ) : abs (a^n) = abs a^n :=
 begin
   induction n with n ih,
-    rewrite [*pow_zero, (abs_of_nonneg zero_le_one : abs (1 : A) = 1)],
+    krewrite [*pow_zero, (abs_of_nonneg zero_le_one : abs (1 : A) = 1)],
   rewrite [*pow_succ, abs_mul, ih]
 end
+
+theorem squared_nonneg (x : A) : x^2 ≥ 0 := by rewrite [pow_two]; apply mul_self_nonneg
+
+theorem eq_zero_of_squared_eq_zero {x : A} (H : x^2 = 0) : x = 0 :=
+by rewrite [pow_two at H]; exact eq_zero_of_mul_self_eq_zero H
+
+theorem abs_eq_abs_of_squared_eq_squared {x y : A} (H : x^2 = y^2) : abs x = abs y :=
+have (abs x)^2 = (abs y)^2, by rewrite [-+abs_pow, H],
+eq_of_squared_eq_squared_of_nonneg (abs_nonneg x) (abs_nonneg y) this
 
 end decidable_linear_ordered_comm_ring
 
@@ -149,7 +179,7 @@ include s
 theorem field.div_pow (a : A) {b : A} {n : ℕ} (bnz : b ≠ 0) : (a / b)^n = a^n / b^n :=
 begin
   induction n with n ih,
-    rewrite [*pow_zero, div_one],
+    krewrite [*pow_zero, div_one],
   have bnnz : b^n ≠ 0, from division_ring.pow_ne_zero_of_ne_zero bnz,
   rewrite [*pow_succ, ih, !field.div_mul_div bnz bnnz]
 end
@@ -163,7 +193,7 @@ include s
 theorem div_pow (a : A) {b : A} {n : ℕ} : (a / b)^n = a^n / b^n :=
 begin
   induction n with n ih,
-    rewrite [*pow_zero, div_one],
+    krewrite [*pow_zero, div_one],
   rewrite [*pow_succ, ih, div_mul_div]
 end
 

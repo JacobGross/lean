@@ -8,9 +8,9 @@ Declaration of the circle
 
 import .sphere
 import types.bool types.int.hott types.equiv
-import algebra.homotopy_group algebra.hott
+import algebra.homotopy_group algebra.hott .connectedness
 
-open eq susp bool sphere_index is_equiv equiv equiv.ops is_trunc pi algebra
+open eq susp bool sphere_index is_equiv equiv is_trunc is_conn pi algebra
 
 definition circle : Type₀ := sphere 1
 
@@ -42,12 +42,12 @@ namespace circle
 
   theorem rec2_seg1 {P : circle → Type} (Pb1 : P base1) (Pb2 : P base2)
     (Ps1 : Pb1 =[seg1] Pb2) (Ps2 : Pb1 =[seg2] Pb2)
-      : apdo (rec2 Pb1 Pb2 Ps1 Ps2) seg1 = Ps1 :=
+      : apd (rec2 Pb1 Pb2 Ps1 Ps2) seg1 = Ps1 :=
   !rec_merid
 
   theorem rec2_seg2 {P : circle → Type} (Pb1 : P base1) (Pb2 : P base2)
     (Ps1 : Pb1 =[seg1] Pb2) (Ps2 : Pb1 =[seg2] Pb2)
-      : apdo (rec2 Pb1 Pb2 Ps1 Ps2) seg2 = Ps2 :=
+      : apd (rec2 Pb1 Pb2 Ps1 Ps2) seg2 = Ps2 :=
   !rec_merid
 
   definition elim2 {P : Type} (Pb1 Pb2 : P) (Ps1 Ps2 : Pb1 = Pb2) (x : circle) : P :=
@@ -61,14 +61,14 @@ namespace circle
     : ap (elim2 Pb1 Pb2 Ps1 Ps2) seg1 = Ps1 :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant seg1),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑elim2,rec2_seg1],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑elim2,rec2_seg1],
   end
 
   theorem elim2_seg2 {P : Type} (Pb1 Pb2 : P) (Ps1 : Pb1 = Pb2) (Ps2 : Pb1 = Pb2)
     : ap (elim2 Pb1 Pb2 Ps1 Ps2) seg2 = Ps2 :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant seg2),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑elim2,rec2_seg2],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑elim2,rec2_seg2],
   end
 
   definition elim2_type (Pb1 Pb2 : Type) (Ps1 Ps2 : Pb1 ≃ Pb2) (x : circle) : Type :=
@@ -109,9 +109,9 @@ namespace circle
   eq.rec_on p idp
 
   theorem rec_loop {P : circle → Type} (Pbase : P base) (Ploop : Pbase =[loop] Pbase) :
-    apdo (circle.rec Pbase Ploop) loop = Ploop :=
+    apd (circle.rec Pbase Ploop) loop = Ploop :=
   begin
-    rewrite [↑loop,apdo_con,↑circle.rec,↑circle.rec2_on,↑base,rec2_seg2,apdo_inv,rec2_seg1],
+    rewrite [↑loop,apd_con,↑circle.rec,↑circle.rec2_on,↑base,rec2_seg2,apd_inv,rec2_seg1],
     apply rec_loop_helper
   end
 
@@ -127,7 +127,31 @@ namespace circle
     ap (circle.elim Pbase Ploop) loop = Ploop :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant loop),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑circle.elim,rec_loop],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑circle.elim,rec_loop],
+  end
+
+  theorem elim_seg1 {P : Type} (Pbase : P) (Ploop : Pbase = Pbase)
+    : ap (circle.elim Pbase Ploop) seg1 = (tr_constant seg1 Pbase)⁻¹ :=
+  begin
+    apply eq_of_fn_eq_fn_inv !(pathover_constant seg1),
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑circle.elim,↑circle.rec],
+    rewrite [↑circle.rec2_on,rec2_seg1], apply inverse,
+    apply pathover_of_eq_tr_constant_inv
+  end
+
+  theorem elim_seg2 {P : Type} (Pbase : P) (Ploop : Pbase = Pbase)
+    : ap (circle.elim Pbase Ploop) seg2 = Ploop ⬝ (tr_constant seg1 Pbase)⁻¹ :=
+  begin
+    apply eq_of_fn_eq_fn_inv !(pathover_constant seg2),
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑circle.elim,↑circle.rec],
+    rewrite [↑circle.rec2_on,rec2_seg2],
+    assert l : Π(A B : Type)(a a₂ a₂' : A)(b b' : B)(p : a = a₂)(p' : a₂' = a₂)
+                   (q : b = b'),
+             pathover_tr_of_pathover (pathover_of_eq q)
+           = pathover_of_eq (q ⬝ (tr_constant p' b')⁻¹)
+           :> b =[p] p' ▸ b',
+    { intros, cases q, cases p', cases p, reflexivity },
+    apply l
   end
 
   protected definition elim_type (Pbase : Type) (Ploop : Pbase ≃ Pbase)
@@ -140,7 +164,7 @@ namespace circle
 
   theorem elim_type_loop (Pbase : Type) (Ploop : Pbase ≃ Pbase) :
     transport (circle.elim_type Pbase Ploop) loop = Ploop :=
-  by rewrite [tr_eq_cast_ap_fn,↑circle.elim_type,circle.elim_loop];apply cast_ua_fn
+  by rewrite [tr_eq_cast_ap_fn,↑circle.elim_type,elim_loop];apply cast_ua_fn
 
   theorem elim_type_loop_inv (Pbase : Type) (Ploop : Pbase ≃ Pbase) :
     transport (circle.elim_type Pbase Ploop) loop⁻¹ = to_inv Ploop :=
@@ -158,11 +182,45 @@ attribute circle.rec_on circle.elim_on [unfold 2]
 attribute circle.elim_type_on [unfold 1]
 
 namespace circle
-  definition pointed_circle [instance] [constructor] : pointed circle :=
+  open sigma
+  /- universal property of the circle -/
+  definition circle_pi_equiv [constructor] (P : S¹ → Type)
+    : (Π(x : S¹), P x) ≃ Σ(p : P base), p =[loop] p :=
+  begin
+    fapply equiv.MK,
+    { intro f, exact ⟨f base, apd f loop⟩},
+    { intro v x, induction v with p q, induction x,
+      { exact p},
+      { exact q}},
+    { intro v, induction v with p q, fapply sigma_eq,
+      { reflexivity},
+      { esimp, apply pathover_idp_of_eq, apply rec_loop}},
+    { intro f, apply eq_of_homotopy, intro x, induction x,
+      { reflexivity},
+      { apply eq_pathover_dep, apply hdeg_squareover, esimp, apply rec_loop}}
+  end
+
+  definition circle_arrow_equiv [constructor] (P : Type)
+    : (S¹ → P) ≃ Σ(p : P), p = p :=
+  begin
+    fapply equiv.MK,
+    { intro f, exact ⟨f base, ap f loop⟩},
+    { intro v x, induction v with p q, induction x,
+      { exact p},
+      { exact q}},
+    { intro v, induction v with p q, fapply sigma_eq,
+      { reflexivity},
+      { esimp, apply pathover_idp_of_eq, apply elim_loop}},
+    { intro f, apply eq_of_homotopy, intro x, induction x,
+      { reflexivity},
+      { apply eq_pathover, apply hdeg_square, esimp, apply elim_loop}}
+  end
+
+  definition pointed_circle [instance] [constructor] : pointed S¹ :=
   pointed.mk base
 
-  definition Circle [constructor] : Type* := pointed.mk' circle
-  notation `S¹.` := Circle
+  definition pcircle [constructor] : Type* := pointed.mk' S¹
+  notation `S¹.` := pcircle
 
   definition loop_neq_idp : loop ≠ idp :=
   assume H : loop = idp,
@@ -219,7 +277,7 @@ namespace circle
           exact ap succ p},
         { intros n p, rewrite [↑circle.encode, nat_succ_eq_int_succ, neg_succ, -power_con_inv,
             @con_tr _ circle.code, transport_code_loop_inv, ↑[circle.encode] at p, p, -neg_succ] }},
-      { apply pathover_of_tr_eq, apply eq_of_homotopy, intro a, apply @is_hset.elim,
+      { apply pathover_of_tr_eq, apply eq_of_homotopy, intro a, apply @is_set.elim,
         esimp, exact _} end end},
     { intro p, cases p, exact idp},
   end
@@ -235,15 +293,15 @@ namespace circle
   preserve_binary_of_inv_preserve base_eq_base_equiv concat (@add ℤ _) decode_add p q
 
   --the carrier of π₁(S¹) is the set-truncation of base = base.
-  open algebra trunc equiv.ops
+  open algebra trunc
 
   definition fg_carrier_equiv_int : π[1](S¹.) ≃ ℤ :=
-  trunc_equiv_trunc 0 base_eq_base_equiv ⬝e @(trunc_equiv ℤ _) proof _ qed
+  trunc_equiv_trunc 0 base_eq_base_equiv ⬝e @(trunc_equiv 0 ℤ) proof _ qed
 
   definition con_comm_base (p q : base = base) : p ⬝ q = q ⬝ p :=
   eq_of_fn_eq_fn base_eq_base_equiv (by esimp;rewrite [+encode_con,add.comm])
 
-  definition fundamental_group_of_circle : π₁(S¹.) = group_integers :=
+  definition fundamental_group_of_circle : π₁(S¹.) = gℤ :=
   begin
     apply (Group_eq fg_carrier_equiv_int),
     intros g h,
@@ -252,9 +310,9 @@ namespace circle
   end
 
   open nat
-  definition homotopy_group_of_circle (n : ℕ) : πG[n+1 +1] S¹. = G0 :=
+  definition homotopy_group_of_circle (n : ℕ) : πg[n+1 +1] S¹. = G0 :=
   begin
-    refine @trivial_homotopy_of_is_hset_loop_space S¹. 1 n _,
+    refine @trivial_homotopy_add_of_is_set_loop_space S¹. 1 n _,
     apply is_trunc_equiv_closed_rev, apply base_eq_base_equiv
   end
 
@@ -265,8 +323,39 @@ namespace circle
     { apply equiv_pathover, intro p p' q, apply pathover_of_eq,
       note H := eq_of_square (square_of_pathover q),
       rewrite con_comm_base at H,
-      let H' := cancel_left H,
+      note H' := cancel_left _ H,
       induction H', reflexivity}
   end
+
+  proposition is_trunc_circle [instance] : is_trunc 1 S¹ :=
+  begin
+    apply is_trunc_succ_of_is_trunc_loop,
+    { apply trunc_index.minus_one_le_succ},
+    { intro x, apply is_trunc_equiv_closed_rev, apply eq_equiv_Z}
+  end
+
+  proposition is_conn_circle [instance] : is_conn 0 circle :=
+  sphere.is_conn_sphere -1.+2
+
+  definition circle_turn [reducible] (x : S¹) : x = x :=
+  begin
+    induction x,
+    { exact loop },
+    { apply eq_pathover, apply square_of_eq, rewrite ap_id }
+  end
+
+  definition circle_mul [reducible] (x y : S¹) : S¹ :=
+  circle.elim y (circle_turn y) x
+
+  definition circle_mul_base (x : S¹) : circle_mul x base = x :=
+  begin
+    induction x,
+    { reflexivity },
+    { apply eq_pathover, krewrite [elim_loop,ap_id], apply hrefl }
+  end
+
+  definition circle_base_mul [reducible] (x : S¹)
+    : circle_mul base x = x :=
+  idp
 
 end circle

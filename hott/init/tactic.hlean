@@ -21,8 +21,6 @@ namespace tactic
 -- a term of type 'tactic' into a tactic that sythesizes a term
 definition and_then    (t1 t2 : tactic) : tactic := builtin
 definition or_else     (t1 t2 : tactic) : tactic := builtin
-definition append      (t1 t2 : tactic) : tactic := builtin
-definition interleave  (t1 t2 : tactic) : tactic := builtin
 definition par         (t1 t2 : tactic) : tactic := builtin
 definition fixpoint    (f : tactic → tactic) : tactic := builtin
 definition repeat      (t : tactic) : tactic := builtin
@@ -95,6 +93,7 @@ definition trace      (s : string)          : tactic := builtin
 definition rewrite_tac  (e : expr_list) : tactic := builtin
 definition xrewrite_tac (e : expr_list) : tactic := builtin
 definition krewrite_tac (e : expr_list) : tactic := builtin
+definition replace (old : expr) (new : with_expr) (loc : location) : tactic := builtin
 
 -- Arguments:
 --  - ls : lemmas to be used (if not provided, then blast will choose them)
@@ -145,8 +144,8 @@ definition repeat1     (t : tactic) : tactic := and_then t (repeat t)
 definition focus       (t : tactic) : tactic := focus_at t 0
 definition determ      (t : tactic) : tactic := at_most t 1
 definition trivial                  : tactic := or_else (apply eq.refl) assumption
-definition do (n : num) (t : tactic) : tactic :=
-nat.rec id (λn t', and_then t t') (nat.of_num n)
+definition do (n : nat) (t : tactic) : tactic :=
+nat.rec id (λn t', and_then t t') n
 
 end tactic
 tactic_infixl `;`:15 := tactic.and_then

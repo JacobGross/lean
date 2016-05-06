@@ -10,8 +10,8 @@ Author: Leonardo de Moura
 #include <functional>
 #include <algorithm>
 #include <utility>
+#include "util/rc.h"
 #include "util/pair.h"
-#include "util/lua.h"
 #include "util/serializer.h"
 #include "util/optional.h"
 #include "util/list.h"
@@ -24,7 +24,22 @@ enum class name_kind { ANONYMOUS, STRING, NUMERAL };
 */
 class name {
 public:
-    struct imp;
+    /** \brief Actual implementation of hierarchical names. */
+    struct imp {
+        MK_LEAN_RC()
+        bool     m_is_string;
+        unsigned m_hash;
+        imp *    m_prefix;
+        union {
+            char * m_str;
+            unsigned m_k;
+        };
+        void dealloc();
+        imp(bool s, imp * p):m_rc(1), m_is_string(s), m_hash(0), m_prefix(p) { if (p) p->inc_ref(); }
+        static void display_core(std::ostream & out, imp * p, char const * sep);
+        static void display(std::ostream & out, imp * p, char const * sep = lean_name_separator);
+        friend void copy_limbs(imp * p, buffer<name::imp *> & limbs);
+    };
 private:
     friend int cmp(imp * i1, imp * i2);
     friend class name_deserializer;
@@ -41,15 +56,15 @@ public:
     name(std::string const & s):name(s.c_str()) {}
     name(name const & prefix, char const * name);
     name(name const & prefix, unsigned k);
-    name(name const & other);
-    name(name && other);
+    name(name const & other):m_ptr(other.m_ptr) { if (m_ptr) m_ptr->inc_ref(); }
+    name(name && other):m_ptr(other.m_ptr) { other.m_ptr = nullptr; }
     /**
        \brief Create a hierarchical name using the given strings.
        Example: <code>name{"foo", "bla", "tst"}</code> creates the hierarchical
        name <tt>foo::bla::tst</tt>.
     */
     name(std::initializer_list<char const *> const & l);
-    ~name();
+    ~name() { if (m_ptr) m_ptr->dec_ref(); }
     static name const & anonymous();
     /**
         \brief Create a unique internal name that is not meant to exposed
@@ -69,7 +84,16 @@ public:
     name & operator=(name && other);
     /** \brief Return true iff \c n1 is a prefix of \c n2. */
     friend bool is_prefix_of(name const & n1, name const & n2);
-    friend bool operator==(name const & a, name const & b);
+    friend bool eq_core(name::imp * i1, name::imp * i2);
+    friend bool operator==(name const & a, name const & b) {
+        if (a.m_ptr == b.m_ptr)
+            return true;
+        if ((a.m_ptr == nullptr) != (b.m_ptr == nullptr))
+            return false;
+        if (a.m_ptr->m_hash != b.m_ptr->m_hash)
+            return false;
+        return eq_core(a.m_ptr, b.m_ptr);
+    }
     friend bool operator!=(name const & a, name const & b) { return !(a == b); }
     friend bool operator==(name const & a, char const * b);
     friend bool operator!=(name const & a, char const * b) { return !(a == b); }
@@ -82,29 +106,29 @@ public:
     friend bool operator<=(name const & a, name const & b) { return cmp(a, b) <= 0; }
     friend bool operator>=(name const & a, name const & b) { return cmp(a, b) >= 0; }
     name_kind kind() const;
-    bool is_anonymous() const { return kind() == name_kind::ANONYMOUS; }
-    bool is_string() const    { return kind() == name_kind::STRING; }
-    bool is_numeral() const   { return kind() == name_kind::NUMERAL; }
-    explicit operator bool() const     { return !is_anonymous(); }
-    unsigned get_numeral() const;
+    bool is_anonymous() const { return m_ptr == nullptr; }
+    bool is_string() const    { return m_ptr != nullptr && m_ptr->m_is_string; }
+    bool is_numeral() const   { return m_ptr != nullptr && !m_ptr->m_is_string; }
+    explicit operator bool() const { return m_ptr != nullptr; }
+    unsigned get_numeral() const { lean_assert(is_numeral()); return m_ptr->m_k; }
     /**
        \brief If the tail of the given hierarchical name is a string, then it returns this string.
        \pre is_string()
     */
-    char const * get_string() const;
-    bool is_atomic() const;
+    char const * get_string() const { lean_assert(is_string()); return m_ptr->m_str; }
+    bool is_atomic() const { return m_ptr == nullptr || m_ptr->m_prefix == nullptr; }
     /**
         \brief Return the prefix of a hierarchical name
         \pre !is_atomic()
     */
-    name get_prefix() const;
+    name get_prefix() const { return is_atomic() ? name() : name(m_ptr->m_prefix); }
     /** \brief Convert this hierarchical name into a string. */
     std::string to_string(char const * sep = lean_name_separator) const;
     /** \brief Size of the this name (in characters). */
     size_t size() const;
     /** \brief Size of the this name in unicode. */
     size_t utf8_size() const;
-    unsigned hash() const;
+    unsigned hash() const { return m_ptr ? m_ptr->m_hash : 11; }
     /** \brief Return true iff the name contains only safe ASCII chars */
     bool is_safe_ascii() const;
     friend std::ostream & operator<<(std::ostream & out, name const & n);
@@ -150,10 +174,13 @@ public:
             return 0;
         unsigned h1 = a.hash();
         unsigned h2 = b.hash();
-        if (h1 != h2)
+        if (h1 != h2) {
             return h1 < h2 ? -1 : 1;
-        else
+        } else if (a == b) {
+            return 0;
+        } else {
             return cmp(a, b);
+        }
     }
 
     struct ptr_hash { unsigned operator()(name const & n) const { return std::hash<imp*>()(n.m_ptr); } };
@@ -184,9 +211,9 @@ inline bool independent(name const & a, name const & b) {
 typedef pair<name, name> name_pair;
 struct name_pair_quick_cmp {
     int operator()(name_pair const & p1, name_pair const & p2) const {
-        int r = cmp(p1.first, p2.first);
+        int r = quick_cmp(p1.first, p2.first);
         if (r != 0) return r;
-        return cmp(p1.second, p2.second);
+        return quick_cmp(p1.second, p2.second);
     }
 };
 
@@ -196,15 +223,6 @@ serializer & operator<<(serializer & s, name const & n);
 name read_name(deserializer & d);
 inline deserializer & operator>>(deserializer & d, name & n) { n = read_name(d); return d; }
 
-UDATA_DEFS(name)
-name to_name_ext(lua_State * L, int idx);
-optional<name> to_optional_name(lua_State * L, int idx);
-int push_optional_name(lua_State * L, optional<name> const & n);
-bool is_list_name(lua_State * L, int idx);
-list<name> & to_list_name(lua_State * L, int idx);
-list<name> to_list_name_ext(lua_State * L, int idx);
-int push_list_name(lua_State * L, list<name> const & l);
-void open_name(lua_State * L);
 void initialize_name();
 void finalize_name();
 }

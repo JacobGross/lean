@@ -16,12 +16,12 @@ namespace int
 private definition nonneg (a : ℤ) : Prop := int.cases_on a (take n, true) (take n, false)
 protected definition le (a b : ℤ) : Prop := nonneg (b - a)
 
-definition int_has_le [instance] [reducible] [priority int.prio]: has_le int :=
+definition int_has_le [instance] [priority int.prio]: has_le int :=
 has_le.mk int.le
 
 protected definition lt (a b : ℤ) : Prop := (a + 1) ≤ b
 
-definition int_has_lt [instance] [reducible] [priority int.prio]: has_lt int :=
+definition int_has_lt [instance] [priority int.prio]: has_lt int :=
 has_lt.mk int.lt
 
 local attribute nonneg [reducible]
@@ -122,7 +122,7 @@ have a + of_nat (n + m) = a + 0, from
       ... = a + 0                           : by rewrite add_zero,
 have of_nat (n + m) = of_nat 0, from add.left_cancel this,
 have n + m = 0,                 from of_nat.inj this,
-assert n = 0,                     from nat.eq_zero_of_add_eq_zero_right this,
+have n = 0,                     from nat.eq_zero_of_add_eq_zero_right this,
 show a = b, from
   calc
     a = a + 0    : add_zero
@@ -232,7 +232,7 @@ protected theorem lt_of_le_of_lt  {a b c : ℤ} (Hab : a ≤ b) (Hbc : b < c) : 
   (iff.mpr !int.lt_iff_le_and_ne) (and.intro Hac
     (assume Heq, int.not_le_of_gt (Heq⁻¹ ▸ Hbc) Hab))
 
-protected definition linear_ordered_comm_ring [reducible] [trans_instance] :
+protected definition linear_ordered_comm_ring [trans_instance] :
     linear_ordered_comm_ring int :=
 ⦃linear_ordered_comm_ring, int.integral_domain,
   le               := int.le,
@@ -253,7 +253,7 @@ protected definition linear_ordered_comm_ring [reducible] [trans_instance] :
   zero_lt_one      := int.zero_lt_one,
   add_lt_add_left  := @int.add_lt_add_left⦄
 
-protected definition decidable_linear_ordered_comm_ring [reducible] [instance] :
+protected definition decidable_linear_ordered_comm_ring [instance] :
     decidable_linear_ordered_comm_ring int :=
 ⦃decidable_linear_ordered_comm_ring,
  int.linear_ordered_comm_ring,
@@ -341,7 +341,7 @@ or.elim (le_or_gt a 1)
   (suppose a ≤ 1,
     show a = 1, from le.antisymm this (add_one_le_of_lt `a > 0`))
   (suppose a > 1,
-    assert a * b ≥ 2 * 1,
+    have a * b ≥ 2 * 1,
       from mul_le_mul (add_one_le_of_lt `a > 1`) (add_one_le_of_lt `b > 0`) trivial H,
     have false, by rewrite [H' at this]; exact this,
     false.elim this)

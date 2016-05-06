@@ -23,7 +23,7 @@ namespace category
   definition is_weak_equivalence [class] (F : C ⇒ D) :=
   fully_faithful F × essentially_surjective F
 
-  definition is_equiv_of_fully_faithful [instance] [reducible] (F : C ⇒ D)
+  definition is_equiv_of_fully_faithful [instance] (F : C ⇒ D)
     [H : fully_faithful F] (c c' : C) : is_equiv (@(to_fun_hom F) c c') :=
   !H
 
@@ -47,14 +47,15 @@ namespace category
   begin
     fconstructor,
     { exact (to_fun_hom F)⁻¹ᶠ f},
-    { assert H : is_iso (F ((to_fun_hom F)⁻¹ᶠ f)),
-      { have H' : is_iso (to_hom f), from _, exact (right_inv (to_fun_hom F) (to_hom f))⁻¹ ▸ H'},
+    { have H : is_iso (F ((to_fun_hom F)⁻¹ᶠ f)), from
+        have H' : is_iso (to_hom f), from _,
+        (right_inv (to_fun_hom F) (to_hom f))⁻¹ ▸ H',
       exact reflect_is_iso F _},
   end
 
   theorem reflect_inverse (F : C ⇒ D) [H : fully_faithful F] {c c' : C} (f : c ⟶ c')
-    [H : is_iso f] : (to_fun_hom F)⁻¹ᶠ (F f)⁻¹ = f⁻¹ :=
-  inverse_eq_inverse (idp : to_hom (@(iso.mk f) (reflect_is_iso F f)) = f)
+    [H' : is_iso f] : (to_fun_hom F)⁻¹ᶠ (F f)⁻¹ = f⁻¹ :=
+  @inverse_eq_inverse _ _ _ _ _ _ (reflect_is_iso F f) H' idp
 
   definition hom_equiv_F_hom_F [constructor] (F : C ⇒ D)
     [H : fully_faithful F] (c c' : C) : (c ⟶ c') ≃ (F c ⟶ F c') :=
@@ -117,24 +118,24 @@ namespace category
     apply is_equiv_of_is_surjective_of_is_embedding,
   end
 
-  theorem is_hprop_fully_faithful [instance] (F : C ⇒ D) : is_hprop (fully_faithful F) :=
+  theorem is_prop_fully_faithful [instance] (F : C ⇒ D) : is_prop (fully_faithful F) :=
   by unfold fully_faithful; exact _
 
-  theorem is_hprop_full [instance] (F : C ⇒ D) : is_hprop (full F) :=
+  theorem is_prop_full [instance] (F : C ⇒ D) : is_prop (full F) :=
   by unfold full; exact _
 
-  theorem is_hprop_faithful [instance] (F : C ⇒ D) : is_hprop (faithful F) :=
+  theorem is_prop_faithful [instance] (F : C ⇒ D) : is_prop (faithful F) :=
   by unfold faithful; exact _
 
-  theorem is_hprop_essentially_surjective [instance] (F : C ⇒ D)
-    : is_hprop (essentially_surjective F) :=
+  theorem is_prop_essentially_surjective [instance] (F : C ⇒ D)
+    : is_prop (essentially_surjective F) :=
   by unfold essentially_surjective; exact _
 
-  theorem is_hprop_is_weak_equivalence [instance] (F : C ⇒ D) : is_hprop (is_weak_equivalence F) :=
+  theorem is_prop_is_weak_equivalence [instance] (F : C ⇒ D) : is_prop (is_weak_equivalence F) :=
   by unfold is_weak_equivalence; exact _
 
   definition fully_faithful_equiv (F : C ⇒ D) : fully_faithful F ≃ (faithful F × full F) :=
-  equiv_of_is_hprop (λH, (faithful_of_fully_faithful F, full_of_fully_faithful F))
+  equiv_of_is_prop (λH, (faithful_of_fully_faithful F, full_of_fully_faithful F))
                     (λH, fully_faithful_of_full_of_faithful (pr1 H) (pr2 H))
 
 /- alternative proof using direct calculation with equivalences
@@ -143,15 +144,15 @@ namespace category
   calc
         fully_faithful F
       ≃ (Π(c c' : C), is_embedding (to_fun_hom F) × is_surjective (to_fun_hom F))
-        : pi_equiv_pi_id (λc, pi_equiv_pi_id
+        : pi_equiv_pi_right (λc, pi_equiv_pi_right
             (λc', !is_equiv_equiv_is_embedding_times_is_surjective))
   ... ≃ (Π(c : C), (Π(c' : C), is_embedding  (to_fun_hom F)) ×
                    (Π(c' : C), is_surjective (to_fun_hom F)))
-        : pi_equiv_pi_id (λc, !equiv_prod_corec)
+        : pi_equiv_pi_right (λc, !equiv_prod_corec)
   ... ≃ (Π(c c' : C), is_embedding (to_fun_hom F)) × full F
         : equiv_prod_corec
   ... ≃ faithful F × full F
-        : prod_equiv_prod_right (pi_equiv_pi_id (λc, pi_equiv_pi_id
+        : prod_equiv_prod_right (pi_equiv_pi_right (λc, pi_equiv_pi_right
             (λc', !is_embedding_equiv_is_injective)))
 -/
 

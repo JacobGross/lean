@@ -8,6 +8,7 @@ Author: Leonardo de Moura
 #include <string>
 #include "util/sstream.h"
 #include "util/list_fn.h"
+#include "util/fresh_name.h"
 #include "kernel/expr.h"
 #include "kernel/type_checker.h"
 #include "kernel/abstract.h"
@@ -323,8 +324,7 @@ class equation_compiler_fn {
 
     environment const & env() const { return m_tc.env(); }
     io_state const & ios() const { return m_ios; }
-    io_state_stream out() const { return regular(env(), ios()); }
-    name mk_fresh_name() { return m_tc.mk_fresh_name(); }
+    io_state_stream out() const { return regular(env(), ios(), m_tc.get_type_context()); }
     expr whnf(expr const & e) { return m_tc.whnf(e).first; }
     expr infer_type(expr const & e) { return m_tc.infer(e).first; }
     bool is_def_eq(expr const & e1, expr const & e2) { return m_tc.is_def_eq(e1, e2).first; }
@@ -337,13 +337,11 @@ class equation_compiler_fn {
     }
 
     expr to_telescope(expr const & e, buffer<expr> & tele) {
-        name_generator ngen = m_tc.mk_ngen();
-        return ::lean::to_telescope(ngen, e, tele, optional<binder_info>());
+        return ::lean::to_telescope(e, tele, optional<binder_info>());
     }
 
     expr fun_to_telescope(expr const & e, buffer<expr> & tele) {
-        name_generator ngen = m_tc.mk_ngen();
-        return ::lean::fun_to_telescope(ngen, e, tele, optional<binder_info>());
+        return ::lean::fun_to_telescope(e, tele, optional<binder_info>());
     }
 
     // Similar to to_telescope, but uses normalization
@@ -736,17 +734,14 @@ class equation_compiler_fn {
         return true;
     }
 
-    // Return true if there are no equations, and the next variable is an indexed inductive datatype.
-    // In this case, it is worth trying the cases tactic, since this may be a conflicting state.
+    /** Return true if there are no equations, and the next variable is an inductive datatype.
+        In this case, it is worth trying the cases tactic, since this may be a conflicting state. */
     bool is_no_equation_constructor_transition(program const & p) {
         lean_assert(p.m_var_stack);
         if (!p.m_eqns && head(p.m_var_stack)) {
             expr const & x = p.get_var(*head(p.m_var_stack));
             expr const & I = get_app_fn(mlocal_type(x));
-            return
-                is_constant(I) &&
-                inductive::is_inductive_decl(env(), const_name(I)) &&
-                *inductive::get_num_indices(env(), const_name(I)) > 0;
+            return is_constant(I) && inductive::is_inductive_decl(env(), const_name(I));
         } else {
             return false;
         }
@@ -945,7 +940,13 @@ class equation_compiler_fn {
     }
 
     expr compile_no_equations(program const & p) {
-        bool fail_if_subgoals = true;
+        lean_assert(head(p.m_var_stack));
+        expr const & x = p.get_var(*head(p.m_var_stack));
+        expr const & I = get_app_fn(mlocal_type(x));
+        lean_assert(is_constant(I) && inductive::is_inductive_decl(env(), const_name(I)));
+        /* If the head variable is a recursive datatype, then we want to fail if subgoals are generated.
+           Reason: avoid non-termination. */
+        bool fail_if_subgoals = is_recursive_datatype(env(), const_name(I));
         if (auto r = compile_constructor_core(p, fail_if_subgoals))
             return *r;
         else
@@ -1208,12 +1209,15 @@ class equation_compiler_fn {
                 }
                 return true;
             }
+            case expr_kind::Let:
+                // TODO(Leo): improve
+                return check_rhs(instantiate(let_body(e), let_value(e)), arg);
             case expr_kind::Lambda:
             case expr_kind::Pi:
                 if (!check_rhs(binding_domain(e), arg)) {
                     return false;
                 } else {
-                    expr l = mk_local(m_main.mk_fresh_name(), binding_name(e), binding_domain(e), binding_info(e));
+                    expr l = mk_local(mk_fresh_name(), binding_name(e), binding_domain(e), binding_info(e));
                     return check_rhs(instantiate(binding_body(e), l), arg);
                 }
             }
@@ -1401,7 +1405,7 @@ class equation_compiler_fn {
                 return mk_app(new_fn, new_args, e.get_tag());
             }
             case expr_kind::Lambda: {
-                expr local    = mk_local(m_main.mk_fresh_name(), binding_name(e), binding_domain(e), binding_info(e));
+                expr local    = mk_local(mk_fresh_name(), binding_name(e), binding_domain(e), binding_info(e));
                 expr body     = instantiate(binding_body(e), local);
                 expr new_body;
                 if (is_below_type(binding_domain(e)))
@@ -1412,9 +1416,13 @@ class equation_compiler_fn {
             }
             case expr_kind::Pi: {
                 expr new_domain = elim(binding_domain(e), b);
-                expr local      = mk_local(m_main.mk_fresh_name(), binding_name(e), new_domain, binding_info(e));
+                expr local      = mk_local(mk_fresh_name(), binding_name(e), new_domain, binding_info(e));
                 expr new_body   = elim(instantiate(binding_body(e), local), b);
                 return copy_tag(e, Pi(local, new_body));
+            }
+            case expr_kind::Let: {
+                // TODO(Leo): improve
+                return elim(instantiate(let_body(e), let_value(e)), b);
             }}
             lean_unreachable();
         }

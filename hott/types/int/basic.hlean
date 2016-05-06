@@ -48,10 +48,10 @@ notation `-[1+ ` n `]` := int.neg_succ_of_nat n    -- for pretty-printing output
 
 protected definition prio : num := num.pred nat.prio
 
-definition int_has_zero [reducible] [instance] [priority int.prio] : has_zero int :=
+definition int_has_zero [instance] [priority int.prio] : has_zero int :=
 has_zero.mk (of_nat 0)
 
-definition int_has_one [reducible] [instance] [priority int.prio] : has_one int :=
+definition int_has_one [instance] [priority int.prio] : has_one int :=
 has_one.mk (of_nat 1)
 
 theorem of_nat_zero : of_nat (0:nat) = (0:int) :=
@@ -89,9 +89,9 @@ protected definition mul : ℤ → ℤ → ℤ
 
 /- notation -/
 
-definition int_has_add [reducible] [instance] [priority int.prio] : has_add int := has_add.mk int.add
-definition int_has_neg [reducible] [instance] [priority int.prio] : has_neg int := has_neg.mk int.neg
-definition int_has_mul [reducible] [instance] [priority int.prio] : has_mul int := has_mul.mk int.mul
+definition int_has_add [instance] [priority int.prio] : has_add int := has_add.mk int.add
+definition int_has_neg [instance] [priority int.prio] : has_neg int := has_neg.mk int.neg
+definition int_has_mul [instance] [priority int.prio] : has_mul int := has_mul.mk int.mul
 
 lemma mul_of_nat_of_nat   (m n : nat) : of_nat m * of_nat n = of_nat (m * n) :=
 rfl
@@ -380,7 +380,8 @@ calc
     ... = nat_abs a : abstr_repr
 
 theorem padd_pneg (p : ℕ × ℕ) : padd p (pneg p) ≡ (0, 0) :=
-show pr1 p + pr2 p + 0 = pr2 p + pr1 p + 0, from !nat.add_comm ▸ rfl
+show pr1 p + pr2 p + 0 = pr2 p + pr1 p + 0,
+by rewrite [nat.add_comm (pr1 p)]
 
 theorem padd_padd_pneg (p q : ℕ × ℕ) : padd (padd p q) (pneg q) ≡ p :=
 calc      pr1 p + pr1 q + pr2 q + pr2 p
@@ -552,7 +553,7 @@ protected theorem eq_zero_sum_eq_zero_of_mul_eq_zero {a b : ℤ} (H : a * b = 0)
 sum.imp eq_zero_of_nat_abs_eq_zero eq_zero_of_nat_abs_eq_zero
   (eq_zero_sum_eq_zero_of_mul_eq_zero (by rewrite [-nat_abs_mul, H]))
 
-protected definition integral_domain [reducible] [trans_instance] : integral_domain int :=
+protected definition integral_domain [trans_instance] : integral_domain int :=
 ⦃integral_domain,
   add            := int.add,
   add_assoc      := int.add_assoc,
@@ -572,17 +573,17 @@ protected definition integral_domain [reducible] [trans_instance] : integral_dom
   mul_comm       := int.mul_comm,
   zero_ne_one    := int.zero_ne_one,
   eq_zero_sum_eq_zero_of_mul_eq_zero := @int.eq_zero_sum_eq_zero_of_mul_eq_zero,
-  is_hset_carrier := is_hset_of_decidable_eq⦄
+  is_set_carrier := is_set_of_decidable_eq⦄
 
-definition int_has_sub [reducible] [instance] [priority int.prio] : has_sub int :=
+definition int_has_sub [instance] [priority int.prio] : has_sub int :=
 has_sub.mk has_sub.sub
 
-definition int_has_dvd [reducible] [instance] [priority int.prio] : has_dvd int :=
+definition int_has_dvd [instance] [priority int.prio] : has_dvd int :=
 has_dvd.mk has_dvd.dvd
 
 /- additional properties -/
 theorem of_nat_sub {m n : ℕ} (H : m ≥ n) : of_nat (m - n) = of_nat m - of_nat n :=
-assert m - n + n = m,     from nat.sub_add_cancel H,
+have m - n + n = m,     from nat.sub_add_cancel H,
 begin
   symmetry,
   apply sub_eq_of_eq_add,

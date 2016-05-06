@@ -21,7 +21,7 @@ mk' ::
   (left_inv : Πa, inv (f a) = a)
   (adj : Πx, right_inv (f x) = ap f (left_inv x))
 
-attribute is_equiv.inv [quasireducible]
+attribute is_equiv.inv [reducible]
 
 -- A more bundled version of equivalence
 structure equiv (A B : Type) :=
@@ -41,23 +41,22 @@ namespace is_equiv
   protected abbreviation mk [constructor] := @is_equiv.mk' A B f
 
   -- The identity function is an equivalence.
-  definition is_equiv_id [instance] (A : Type) : (is_equiv (id : A → A)) :=
+  definition is_equiv_id [instance] [constructor] (A : Type) : (is_equiv (id : A → A)) :=
   is_equiv.mk id id (λa, idp) (λa, idp) (λa, idp)
 
   -- The composition of two equivalences is, again, an equivalence.
   definition is_equiv_compose [constructor] [Hf : is_equiv f] [Hg : is_equiv g]
     : is_equiv (g ∘ f) :=
   is_equiv.mk (g ∘ f) (f⁻¹ ∘ g⁻¹)
-             (λc, ap g (right_inv f (g⁻¹ c)) ⬝ right_inv g c)
-             (λa, ap (inv f) (left_inv g (f a)) ⬝ left_inv f a)
-             (λa, (whisker_left _ (adj g (f a))) ⬝
+             abstract (λc, ap g (right_inv f (g⁻¹ c)) ⬝ right_inv g c) end
+             abstract (λa, ap (inv f) (left_inv g (f a)) ⬝ left_inv f a) end
+             abstract (λa, (whisker_left _ (adj g (f a))) ⬝
                   (ap_con g _ _)⁻¹ ⬝
                   ap02 g ((ap_con_eq_con (right_inv f) (left_inv g (f a)))⁻¹ ⬝
                           (ap_compose f (inv f) _ ◾  adj f a) ⬝
                           (ap_con f _ _)⁻¹
                          ) ⬝
-                  (ap_compose g f _)⁻¹
-             )
+                  (ap_compose g f _)⁻¹) end
 
   -- Any function equal to an equivalence is an equivlance as well.
   variable {f}
@@ -69,10 +68,10 @@ namespace is_equiv
   parameters {A B : Type} (f : A → B) (g : B → A)
             (ret : Πb, f (g b) = b) (sec : Πa, g (f a) = a)
 
-  private abbreviation adjointify_left_inv' (a : A) : g (f a) = a :=
+  definition adjointify_left_inv' (a : A) : g (f a) = a :=
   ap g (ap f (inverse (sec a))) ⬝ ap g (ret (f a)) ⬝ sec a
 
-  private theorem adjointify_adj' (a : A) : ret (f a) = ap f (adjointify_left_inv' a) :=
+  theorem adjointify_adj' (a : A) : ret (f a) = ap f (adjointify_left_inv' a) :=
   let fgretrfa := ap f (ap g (ret (f a))) in
   let fgfinvsect := ap f (ap g (ap f (sec a)⁻¹)) in
   let fgfa := f (g (f a)) in
@@ -98,9 +97,8 @@ namespace is_equiv
       ... = retrfa⁻¹ ⬝ ap f (ap g (ap f (sec a)⁻¹) ⬝ ap g (ret (f a))) ⬝ ap f (sec a)   : by rewrite ap_con
       ... = retrfa⁻¹ ⬝ (ap f (ap g (ap f (sec a)⁻¹) ⬝ ap g (ret (f a))) ⬝ ap f (sec a)) : by rewrite con.assoc'
       ... = retrfa⁻¹ ⬝ ap f ((ap g (ap f (sec a)⁻¹) ⬝ ap g (ret (f a))) ⬝ sec a)        : by rewrite -ap_con,
-  have eq4 : ret (f a) = ap f ((ap g (ap f (sec a)⁻¹) ⬝ ap g (ret (f a))) ⬝ sec a),
-    from eq_of_idp_eq_inv_con eq3,
-  eq4
+  show ret (f a) = ap f ((ap g (ap f (sec a)⁻¹) ⬝ ap g (ret (f a))) ⬝ sec a),
+    from eq_of_idp_eq_inv_con eq3
 
   definition adjointify [constructor] : is_equiv f :=
   is_equiv.mk f g ret adjointify_left_inv' adjointify_adj'
@@ -134,11 +132,11 @@ namespace is_equiv
   adjointify f⁻¹ f (left_inv f) (right_inv f)
 
   definition cancel_right (g : B → C) [Hgf : is_equiv (g ∘ f)] : (is_equiv g) :=
-  have Hfinv [visible] : is_equiv f⁻¹, from is_equiv_inv f,
+  have Hfinv : is_equiv f⁻¹, from is_equiv_inv f,
   @homotopy_closed _ _ _ _ (is_equiv_compose f⁻¹ (g ∘ f)) (λb, ap g (@right_inv _ _ f _ b))
 
   definition cancel_left (g : C → A) [Hgf : is_equiv (f ∘ g)] : (is_equiv g) :=
-  have Hfinv [visible] : is_equiv f⁻¹, from is_equiv_inv f,
+  have Hfinv : is_equiv f⁻¹, from is_equiv_inv f,
   @homotopy_closed _ _ _ _ (is_equiv_compose (f ∘ g) f⁻¹) (λa, left_inv f (g a))
 
   definition eq_of_fn_eq_fn' {x y : A} (q : f x = f y) : x = y :=
@@ -150,22 +148,22 @@ namespace is_equiv
              ap_con_eq_con_ap (right_inv f) q,inv_con_cancel_left,ap_id],
   end
 
-  definition is_equiv_ap [instance] (x y : A) : is_equiv (ap f : x = y → f x = f y) :=
-    adjointify
-      (ap f)
-      (eq_of_fn_eq_fn' f)
-      (λq, !ap_con
-        ⬝ whisker_right !ap_con _
-        ⬝ ((!ap_inv ⬝ inverse2 (adj f _)⁻¹)
-          ◾ (inverse (ap_compose f f⁻¹ _))
-          ◾ (adj f _)⁻¹)
-        ⬝ con_ap_con_eq_con_con (right_inv f) _ _
-        ⬝ whisker_right !con.left_inv _
-        ⬝ !idp_con)
-      (λp, whisker_right (whisker_left _ (ap_compose f⁻¹ f _)⁻¹) _
-        ⬝ con_ap_con_eq_con_con (left_inv f) _ _
-        ⬝ whisker_right !con.left_inv _
-        ⬝ !idp_con)
+  definition is_equiv_ap [instance] [constructor] (x y : A) : is_equiv (ap f : x = y → f x = f y) :=
+  adjointify
+    (ap f)
+    (eq_of_fn_eq_fn' f)
+    abstract (λq, !ap_con
+      ⬝ whisker_right !ap_con _
+      ⬝ ((!ap_inv ⬝ inverse2 (adj f _)⁻¹)
+        ◾ (inverse (ap_compose f f⁻¹ _))
+        ◾ (adj f _)⁻¹)
+      ⬝ con_ap_con_eq_con_con (right_inv f) _ _
+      ⬝ whisker_right !con.left_inv _
+      ⬝ !idp_con) end
+    abstract (λp, whisker_right (whisker_left _ (ap_compose f⁻¹ f _)⁻¹) _
+      ⬝ con_ap_con_eq_con_con (left_inv f) _ _
+      ⬝ whisker_right !con.left_inv _
+      ⬝ !idp_con) end
 
   -- The function equiv_rect says that given an equivalence f : A → B,
   -- and a hypothesis from B, one may always assume that the hypothesis
@@ -183,38 +181,75 @@ namespace is_equiv
 
   definition is_equiv_rect_comp (P : B → Type)
       (df : Π (x : A), P (f x)) (x : A) : is_equiv_rect f P df (f x) = df x :=
-    calc
-      is_equiv_rect f P df (f x)
-            = right_inv f (f x) ▸ df (f⁻¹ (f x))   : by esimp
-        ... = ap f (left_inv f x) ▸ df (f⁻¹ (f x)) : by rewrite -adj
-        ... = left_inv f x ▸ df (f⁻¹ (f x))        : by rewrite -tr_compose
-        ... = df x                                 : by rewrite (apd df (left_inv f x))
+  calc
+    is_equiv_rect f P df (f x)
+          = right_inv f (f x) ▸ df (f⁻¹ (f x))   : by esimp
+      ... = ap f (left_inv f x) ▸ df (f⁻¹ (f x)) : by rewrite -adj
+      ... = left_inv f x ▸ df (f⁻¹ (f x))        : by rewrite -tr_compose
+      ... = df x                                 : by rewrite (apdt df (left_inv f x))
 
   theorem adj_inv (b : B) : left_inv f (f⁻¹ b) = ap f⁻¹ (right_inv f b) :=
   is_equiv_rect f _
-    (λa,
-      eq.cancel_right (whisker_left _ !ap_id⁻¹ ⬝ (ap_con_eq_con_ap (left_inv f) (left_inv f a))⁻¹) ⬝
+    (λa, eq.cancel_right (left_inv f (id a))
+           (whisker_left _ !ap_id⁻¹ ⬝ (ap_con_eq_con_ap (left_inv f) (left_inv f a))⁻¹) ⬝
       !ap_compose ⬝ ap02 f⁻¹ (adj f a)⁻¹)
     b
 
   end
 
   section
-  variables {A B : Type} {f : A → B} [Hf : is_equiv f] {a : A} {b : B}
+  variables {A B C : Type} {f : A → B} [Hf : is_equiv f]
   include Hf
 
-  --Rewrite rules
-  definition eq_of_eq_inv (p : a = f⁻¹ b) : f a = b :=
-  ap f p ⬝ right_inv f b
+  section rewrite_rules
+    variables {a : A} {b : B}
+    definition eq_of_eq_inv (p : a = f⁻¹ b) : f a = b :=
+    ap f p ⬝ right_inv f b
 
-  definition eq_of_inv_eq (p : f⁻¹ b = a) : b = f a :=
-  (eq_of_eq_inv p⁻¹)⁻¹
+    definition eq_of_inv_eq (p : f⁻¹ b = a) : b = f a :=
+    (eq_of_eq_inv p⁻¹)⁻¹
 
-  definition inv_eq_of_eq (p : b = f a) : f⁻¹ b = a :=
-  ap f⁻¹ p ⬝ left_inv f a
+    definition inv_eq_of_eq (p : b = f a) : f⁻¹ b = a :=
+    ap f⁻¹ p ⬝ left_inv f a
 
-  definition eq_inv_of_eq (p : f a = b) : a = f⁻¹ b :=
-  (inv_eq_of_eq p⁻¹)⁻¹
+    definition eq_inv_of_eq (p : f a = b) : a = f⁻¹ b :=
+    (inv_eq_of_eq p⁻¹)⁻¹
+  end rewrite_rules
+
+  variable (f)
+
+  section pre_compose
+    variables (α : A → C) (β : B → C)
+
+    definition homotopy_of_homotopy_inv_pre (p : β ~ α ∘ f⁻¹) : β ∘ f ~ α :=
+    λ a, p (f a) ⬝ ap α (left_inv f a)
+
+    definition homotopy_of_inv_homotopy_pre (p : α ∘ f⁻¹ ~ β) : α ~ β ∘ f :=
+    λ a, (ap α (left_inv f a))⁻¹ ⬝ p (f a)
+
+    definition inv_homotopy_of_homotopy_pre (p : α ~ β ∘ f) : α ∘ f⁻¹ ~ β :=
+    λ b, p (f⁻¹ b) ⬝ ap β (right_inv f b)
+
+    definition homotopy_inv_of_homotopy_pre (p : β ∘ f ~ α) : β ~ α ∘ f⁻¹  :=
+    λ b, (ap β (right_inv f b))⁻¹ ⬝ p (f⁻¹ b)
+  end pre_compose
+
+  section post_compose
+    variables (α : C → A) (β : C → B)
+
+    definition homotopy_of_homotopy_inv_post (p : α ~ f⁻¹ ∘ β) : f ∘ α ~ β :=
+    λ c, ap f (p c) ⬝ (right_inv f (β c))
+
+    definition homotopy_of_inv_homotopy_post (p : f⁻¹ ∘ β ~ α) : β ~ f ∘ α :=
+    λ c, (right_inv f (β c))⁻¹ ⬝ ap f (p c)
+
+    definition inv_homotopy_of_homotopy_post (p : β ~ f ∘ α) : f⁻¹ ∘ β ~ α :=
+    λ c, ap f⁻¹ (p c) ⬝ (left_inv f (α c))
+
+    definition homotopy_inv_of_homotopy_post (p : f ∘ α ~ β) : α ~ f⁻¹ ∘ β :=
+    λ c, (left_inv f (α c))⁻¹ ⬝ ap f⁻¹ (p c)
+  end post_compose
+
   end
 
   --Transporting is an equivalence
@@ -224,23 +259,23 @@ namespace is_equiv
 
   section
   variables {A : Type} {B C : A → Type} (f : Π{a}, B a → C a) [H : Πa, is_equiv (@f a)]
-    {g : A → A} (h : Π{a}, B a → B (g a)) (h' : Π{a}, C a → C (g a))
+            {g : A → A} {g' : A → A} (h : Π{a}, B (g' a) → B (g a)) (h' : Π{a}, C (g' a) → C (g a))
+
   include H
-  definition inv_commute' (p : Π⦃a : A⦄ (b : B a), f (h b) = h' (f b)) {a : A} (c : C a) :
-    f⁻¹ (h' c) = h (f⁻¹ c) :=
+  definition inv_commute' (p : Π⦃a : A⦄ (b : B (g' a)), f (h b) = h' (f b)) {a : A}
+    (c : C (g' a)) : f⁻¹ (h' c) = h (f⁻¹ c) :=
   eq_of_fn_eq_fn' f (right_inv f (h' c) ⬝ ap h' (right_inv f c)⁻¹ ⬝ (p (f⁻¹ c))⁻¹)
 
-  definition fun_commute_of_inv_commute' (p : Π⦃a : A⦄ (c : C a), f⁻¹ (h' c) = h (f⁻¹ c))
-    {a : A} (b : B a) : f (h b) = h' (f b) :=
+  definition fun_commute_of_inv_commute' (p : Π⦃a : A⦄ (c : C (g' a)), f⁻¹ (h' c) = h (f⁻¹ c))
+    {a : A} (b : B (g' a)) : f (h b) = h' (f b) :=
   eq_of_fn_eq_fn' f⁻¹ (left_inv f (h b) ⬝ ap h (left_inv f b)⁻¹ ⬝ (p (f b))⁻¹)
 
-  definition ap_inv_commute' (p : Π⦃a : A⦄ (b : B a), f (h b) = h' (f b)) {a : A} (c : C a) :
-    ap f (inv_commute' @f @h @h' p c)
-      = right_inv f (h' c) ⬝ ap h' (right_inv f c)⁻¹ ⬝ (p (f⁻¹ c))⁻¹ :=
+  definition ap_inv_commute' (p : Π⦃a : A⦄ (b : B (g' a)), f (h b) = h' (f b)) {a : A}
+    (c : C (g' a)) : ap f (inv_commute' @f @h @h' p c)
+                       = right_inv f (h' c) ⬝ ap h' (right_inv f c)⁻¹ ⬝ (p (f⁻¹ c))⁻¹ :=
   !ap_eq_of_fn_eq_fn'
 
   end
-
 end is_equiv
 open is_equiv
 
@@ -256,14 +291,11 @@ namespace eq
   definition cast_inv {A B : Type} (p : A = B) (b : B) : cast p⁻¹ b = (cast p)⁻¹ b := idp
 end eq
 
-namespace equiv
-  namespace ops
-    attribute to_fun [coercion]
-  end ops
-  open equiv.ops
-  attribute to_is_equiv [instance]
+infix ` ≃ `:25 := equiv
+attribute equiv.to_is_equiv [instance]
 
-  infix ` ≃ `:25 := equiv
+namespace equiv
+  attribute to_fun [coercion]
 
   section
   variables {A B C : Type}
@@ -281,14 +313,14 @@ namespace equiv
   protected definition refl [refl] [constructor] : A ≃ A :=
   equiv.mk id !is_equiv_id
 
-  protected definition symm [symm] (f : A ≃ B) : B ≃ A :=
+  protected definition symm [symm] [constructor] (f : A ≃ B) : B ≃ A :=
   equiv.mk f⁻¹ !is_equiv_inv
 
-  protected definition trans [trans] (f : A ≃ B) (g : B ≃ C) : A ≃ C :=
+  protected definition trans [trans] [constructor] (f : A ≃ B) (g : B ≃ C) : A ≃ C :=
   equiv.mk (g ∘ f) !is_equiv_compose
 
   infixl ` ⬝e `:75 := equiv.trans
-  postfix [parsing_only] `⁻¹ᵉ`:(max + 1) := equiv.symm
+  postfix `⁻¹ᵉ`:(max + 1) := equiv.symm
     -- notation for inverse which is not overloaded
   abbreviation erfl [constructor] := @equiv.refl
 
@@ -311,8 +343,11 @@ namespace equiv
   definition eq_equiv_fn_eq_of_equiv [constructor] (f : A ≃ B) (a b : A) : (a = b) ≃ (f a = f b) :=
   equiv.mk (ap f) !is_equiv_ap
 
-  definition equiv_ap [constructor] (P : A → Type) {a b : A} (p : a = b) : (P a) ≃ (P b) :=
+  definition equiv_ap [constructor] (P : A → Type) {a b : A} (p : a = b) : P a ≃ P b :=
   equiv.mk (transport P p) !is_equiv_tr
+
+  definition equiv_of_eq [constructor] {A B : Type} (p : A = B) : A ≃ B :=
+  equiv.mk (cast p) !is_equiv_tr
 
   definition eq_of_fn_eq_fn (f : A ≃ B) {x y : A} (q : f x = f y) : x = y :=
   (left_inv f x)⁻¹ ⬝ ap f⁻¹ q ⬝ left_inv f y
@@ -324,8 +359,10 @@ namespace equiv
   theorem inv_eq {A B : Type} (eqf eqg : A ≃ B) (p : eqf = eqg) : (to_fun eqf)⁻¹ = (to_fun eqg)⁻¹ :=
   eq.rec_on p idp
 
-  definition equiv_of_equiv_of_eq [trans] {A B C : Type} (p : A = B) (q : B ≃ C) : A ≃ C := p⁻¹ ▸ q
-  definition equiv_of_eq_of_equiv [trans] {A B C : Type} (p : A ≃ B) (q : B = C) : A ≃ C := q   ▸ p
+  definition equiv_of_equiv_of_eq [trans] {A B C : Type} (p : A = B) (q : B ≃ C) : A ≃ C :=
+  equiv_of_eq p ⬝e q
+  definition equiv_of_eq_of_equiv [trans] {A B C : Type} (p : A ≃ B) (q : B = C) : A ≃ C :=
+  p ⬝e equiv_of_eq q
 
   definition equiv_lift [constructor] (A : Type) : A ≃ lift A := equiv.mk up _
 
@@ -342,29 +379,30 @@ namespace equiv
             = right_inv f (f x) ▸ df (f⁻¹ (f x))   : by esimp
         ... = ap f (left_inv f x) ▸ df (f⁻¹ (f x)) : by rewrite -adj
         ... = left_inv f x ▸ df (f⁻¹ (f x))        : by rewrite -tr_compose
-        ... = df x                                 : by rewrite (apd df (left_inv f x))
+        ... = df x                                 : by rewrite (apdt df (left_inv f x))
   end
 
   section
-  variables {A : Type} {B C : A → Type} (f : Π{a}, B a ≃ C a)
-            {g : A → A} (h : Π{a}, B a → B (g a)) (h' : Π{a}, C a → C (g a))
 
-  definition inv_commute (p : Π⦃a : A⦄ (b : B a), f (h b) = h' (f b)) {a : A} (c : C a) :
-    f⁻¹ (h' c) = h (f⁻¹ c) :=
+  variables {A : Type} {B C : A → Type} (f : Π{a}, B a ≃ C a)
+            {g : A → A} {g' : A → A} (h : Π{a}, B (g' a) → B (g a)) (h' : Π{a}, C (g' a) → C (g a))
+
+  definition inv_commute (p : Π⦃a : A⦄ (b : B (g' a)), f (h b) = h' (f b)) {a : A}
+    (c : C (g' a)) : f⁻¹ (h' c) = h (f⁻¹ c) :=
   inv_commute' @f @h @h' p c
 
-  definition fun_commute_of_inv_commute (p : Π⦃a : A⦄ (c : C a), f⁻¹ (h' c) = h (f⁻¹ c))
-    {a : A} (b : B a) : f (h b) = h' (f b) :=
+  definition fun_commute_of_inv_commute (p : Π⦃a : A⦄ (c : C (g' a)), f⁻¹ (h' c) = h (f⁻¹ c))
+    {a : A} (b : B (g' a)) : f (h b) = h' (f b) :=
   fun_commute_of_inv_commute' @f @h @h' p b
+
   end
 
+  infixl ` ⬝pe `:75 := equiv_of_equiv_of_eq
+  infixl ` ⬝ep `:75 := equiv_of_eq_of_equiv
 
-  namespace ops
-    postfix ⁻¹ := equiv.symm -- overloaded notation for inverse
-  end ops
 end equiv
 
-open equiv equiv.ops
+open equiv
 namespace is_equiv
 
   definition is_equiv_of_equiv_of_homotopy [constructor] {A B : Type} (f : A ≃ B)

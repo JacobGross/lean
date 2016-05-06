@@ -76,14 +76,14 @@ lemma nodup_all_perms : nodup (@all_perms A _ _) :=
 
 lemma all_perms_complete : ∀ p : perm A, p ∈ all_perms :=
       take p, perm.destruct p (take f Pinj,
-        assert Pin : f ∈ all_injs A, from all_injs_complete Pinj,
+        have Pin : f ∈ all_injs A, from all_injs_complete Pinj,
         mem_dmap Pinj Pin)
 
 definition perm_is_fintype [instance] : fintype (perm A) :=
            fintype.mk all_perms nodup_all_perms all_perms_complete
 
 definition perm.mul (f g : perm A) :=
-           perm.mk (f∘g) (injective_compose (perm.inj f) (perm.inj g))
+           perm.mk (f∘g) (injective_comp (perm.inj f) (perm.inj g))
 definition perm.one [reducible] : perm A := perm.mk id injective_id
 definition perm.inv (f : perm A) := let inj := perm.inj f in
            perm.mk (perm_inv inj) (perm_inv_inj inj)

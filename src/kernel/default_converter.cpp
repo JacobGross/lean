@@ -6,6 +6,7 @@ Author: Leonardo de Moura
 */
 #include "util/interrupt.h"
 #include "util/flet.h"
+#include "util/fresh_name.h"
 #include "kernel/default_converter.h"
 #include "kernel/instantiate.h"
 #include "kernel/free_vars.h"
@@ -67,7 +68,7 @@ expr default_converter::whnf_core(expr const & e) {
     case expr_kind::Var:  case expr_kind::Sort: case expr_kind::Meta: case expr_kind::Local:
     case expr_kind::Pi:   case expr_kind::Constant: case expr_kind::Lambda:
         return e;
-    case expr_kind::Macro: case expr_kind::App:
+    case expr_kind::Macro: case expr_kind::App: case expr_kind::Let:
         break;
     }
 
@@ -81,7 +82,7 @@ expr default_converter::whnf_core(expr const & e) {
     // do the actual work
     expr r;
     switch (e.kind()) {
-    case expr_kind::Var:    case expr_kind::Sort: case expr_kind::Meta: case expr_kind::Local:
+    case expr_kind::Var:  case expr_kind::Sort: case expr_kind::Meta: case expr_kind::Local:
     case expr_kind::Pi:   case expr_kind::Constant: case expr_kind::Lambda:
         lean_unreachable(); // LCOV_EXCL_LINE
     case expr_kind::Macro:
@@ -107,7 +108,11 @@ expr default_converter::whnf_core(expr const & e) {
             r = f == f0 ? e : whnf_core(mk_rev_app(f, args.size(), args.data()));
         }
         break;
-    }}
+    }
+    case expr_kind::Let:
+        r = whnf_core(instantiate(let_body(e), let_value(e)));
+        break;
+    }
 
     if (m_memoize)
         m_whnf_core_cache.insert(mk_pair(e, r));
@@ -189,7 +194,8 @@ pair<expr, constraint_seq> default_converter::whnf(expr const & e_prime) {
     switch (e_prime.kind()) {
     case expr_kind::Var: case expr_kind::Sort: case expr_kind::Meta: case expr_kind::Local: case expr_kind::Pi:
         return to_ecs(e_prime);
-    case expr_kind::Lambda: case expr_kind::Macro: case expr_kind::App: case expr_kind::Constant:
+    case expr_kind::Lambda:   case expr_kind::Macro: case expr_kind::App:
+    case expr_kind::Constant: case expr_kind::Let:
         break;
     }
 
@@ -248,7 +254,7 @@ bool default_converter::is_def_eq_binding(expr t, expr s, constraint_seq & cs) {
             // local is used inside t or s
             if (!var_s_type)
                 var_s_type = instantiate_rev(binding_domain(s), subst.size(), subst.data());
-            subst.push_back(mk_local(mk_fresh_name(*m_tc), binding_name(s), *var_s_type, binding_info(s)));
+            subst.push_back(mk_local(mk_fresh_name(), binding_name(s), *var_s_type, binding_info(s)));
         } else {
             subst.push_back(*g_dont_care); // don't care
         }
@@ -299,8 +305,8 @@ lbool default_converter::quick_is_def_eq(expr const & t, expr const & s, constra
             return to_lbool(is_def_eq(sort_level(t), sort_level(s), cs));
         case expr_kind::Meta:
             lean_unreachable(); // LCOV_EXCL_LINE
-        case expr_kind::Var: case expr_kind::Local: case expr_kind::App:
-        case expr_kind::Constant: case expr_kind::Macro:
+        case expr_kind::Var:      case expr_kind::Local: case expr_kind::App:
+        case expr_kind::Constant: case expr_kind::Macro: case expr_kind::Let:
             // We do not handle these cases in this method.
             break;
         }
@@ -322,12 +328,6 @@ bool default_converter::is_def_eq_args(expr t, expr s, constraint_seq & cs) {
     return !is_app(t) && !is_app(s);
 }
 
-/** \brief Return true iff t is a constant named f_name or an application of the form (f_name a_1 ... a_k) */
-bool default_converter::is_app_of(expr t, name const & f_name) {
-    t = get_app_fn(t);
-    return is_constant(t) && const_name(t) == f_name;
-}
-
 /** \brief Try to solve (fun (x : A), B) =?= s by trying eta-expansion on s */
 bool default_converter::try_eta_expansion_core(expr const & t, expr const & s, constraint_seq & cs) {
     if (is_lambda(t) && !is_lambda(s)) {
@@ -338,10 +338,9 @@ bool default_converter::try_eta_expansion_core(expr const & t, expr const & s, c
         if (is_pi(s_type)) {
             // do nothing ... s_type is already a Pi
         } else if (auto m = m_tc->is_stuck(s_type)) {
-            name_generator ngen = m_tc->mk_ngen();
-            expr r              = mk_pi_for(ngen, *m);
+            expr r              = mk_pi_for(*m);
             justification j     = mk_justification(s, [=](formatter const & fmt, substitution const & subst, bool) {
-                    return pp_function_expected(fmt, substitution(subst).instantiate(s));
+                    return pp_function_expected(fmt, substitution(subst).instantiate(s), substitution(subst).instantiate(s_type));
                 });
             aux_cs += mk_eq_cnstr(s_type, r, j);
             s_type  = r;

@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Floris van Doorn, Leonardo de Moura
 -/
 prelude
-import init.wf init.tactic init.num init.types init.path
+import init.tactic init.num init.types init.path
 open eq eq.ops decidable
 open algebra sum
 set_option class.force_new true
@@ -41,13 +41,13 @@ namespace nat
   | nat_refl : le a a    -- use nat_refl to avoid overloading le.refl
   | step : Π {b}, le a b → le a (succ b)
 
-  definition nat_has_le [instance] [reducible] [priority nat.prio]: has_le nat := has_le.mk nat.le
+  definition nat_has_le [instance] [priority nat.prio]: has_le nat := has_le.mk nat.le
 
   protected definition le_refl [refl] : Π a : nat, a ≤ a :=
   le.nat_refl
 
   protected definition lt [reducible] (n m : ℕ) := succ n ≤ m
-  definition nat_has_lt [instance] [reducible] [priority nat.prio] : has_lt nat := has_lt.mk nat.lt
+  definition nat_has_lt [instance] [priority nat.prio] : has_lt nat := has_lt.mk nat.lt
 
   definition pred [unfold 1] (a : nat) : nat :=
   nat.cases_on a zero (λ a₁, a₁)
@@ -60,10 +60,10 @@ namespace nat
   protected definition mul (a b : nat) : nat :=
   nat.rec_on b zero (λ b₁ r, r + a)
 
-  definition nat_has_sub [instance] [reducible] [priority nat.prio] : has_sub nat :=
+  definition nat_has_sub [instance] [priority nat.prio] : has_sub nat :=
   has_sub.mk nat.sub
 
-  definition nat_has_mul [instance] [reducible] [priority nat.prio] : has_mul nat :=
+  definition nat_has_mul [instance] [priority nat.prio] : has_mul nat :=
   has_mul.mk nat.mul
 
   /- properties of ℕ -/
@@ -184,25 +184,6 @@ namespace nat
 
   protected theorem le_of_eq_sum_lt {a b : ℕ} (H : a = b ⊎ a < b) : a ≤ b :=
   sum.rec_on H !nat.le_of_eq !nat.le_of_lt
-
-  -- less-than is well-founded
-  definition lt.wf [instance] : well_founded (lt : ℕ → ℕ → Type₀) :=
-  begin
-    constructor, intro n, induction n with n IH,
-    { constructor, intros n H, exfalso, exact !not_lt_zero H},
-    { constructor, intros m H,
-      assert aux : ∀ {n₁} (hlt : m < n₁), succ n = n₁ → acc lt m,
-        { intros n₁ hlt, induction hlt,
-          { intro p, injection p with q, exact q ▸ IH},
-          { intro p, injection p with q, exact (acc.inv (q ▸ IH) a)}},
-      apply aux H rfl},
-  end
-
-  definition measure {A : Type} : (A → ℕ) → A → A → Type₀ :=
-  inv_image lt
-
-  definition measure.wf {A : Type} (f : A → ℕ) : well_founded (measure f) :=
-  inv_image.wf f lt.wf
 
   theorem succ_lt_succ {a b : ℕ} : a < b → succ a < succ b :=
   succ_le_succ

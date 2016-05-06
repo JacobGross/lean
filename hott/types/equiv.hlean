@@ -7,9 +7,9 @@ Ported from Coq HoTT
 Theorems about the types equiv and is_equiv
 -/
 
-import .fiber .arrow arity ..hprop_trunc
+import .fiber .arrow arity ..prop_trunc cubical.square
 
-open eq is_trunc sigma sigma.ops pi fiber function equiv equiv.ops
+open eq is_trunc sigma sigma.ops pi fiber function equiv
 
 namespace is_equiv
   variables {A B : Type} (f : A → B) [H : is_equiv f]
@@ -32,7 +32,7 @@ namespace is_equiv
   definition is_contr_right_inverse : is_contr (Σ(g : B → A), f ∘ g ~ id) :=
   begin
     fapply is_trunc_equiv_closed,
-      {apply sigma_equiv_sigma_id, intro g, apply eq_equiv_homotopy},
+      {apply sigma_equiv_sigma_right, intro g, apply eq_equiv_homotopy},
     fapply is_trunc_equiv_closed,
       {apply fiber.sigma_char},
     fapply is_contr_fiber_of_is_equiv,
@@ -45,7 +45,7 @@ namespace is_equiv
     fapply is_trunc_equiv_closed,
       {apply equiv.symm, apply sigma_pi_equiv_pi_sigma},
     fapply is_trunc_equiv_closed,
-      {apply pi_equiv_pi_id, intro a,
+      {apply pi_equiv_pi_right, intro a,
         apply (fiber_eq_equiv (fiber.mk (u.1 (f a)) (u.2 (f a))) (fiber.mk a idp))},
   end
 
@@ -64,30 +64,30 @@ namespace is_equiv
            (λH, by induction H; reflexivity)
 
   protected definition sigma_char' : (is_equiv f) ≃
-  (Σ(u : Σ(g : B → A), f ∘ g ~ id), Σ(η : u.1 ∘ f ~ id), Π(a : A), u.2 (f a) = ap f (η a)) :=
+  (Σ(u : Σ(g : B → A), f ∘ g ~ id) (η : u.1 ∘ f ~ id), Π(a : A), u.2 (f a) = ap f (η a)) :=
   calc
     (is_equiv f) ≃
       (Σ(g : B → A) (ε : f ∘ g ~ id) (η : g ∘ f ~ id), Π(a : A), ε (f a) = ap f (η a))
           : is_equiv.sigma_char
     ... ≃ (Σ(u : Σ(g : B → A), f ∘ g ~ id), Σ(η : u.1 ∘ f ~ id), Π(a : A), u.2 (f a) = ap f (η a))
-          : {sigma_assoc_equiv (λu, Σ(η : u.1 ∘ f ~ id), Π(a : A), u.2 (f a) = ap f (η a))}
+          : sigma_assoc_equiv (λu, Σ(η : u.1 ∘ f ~ id), Π(a : A), u.2 (f a) = ap f (η a))
 
   local attribute is_contr_right_inverse [instance] [priority 1600]
   local attribute is_contr_right_coherence [instance] [priority 1600]
 
-  theorem is_hprop_is_equiv [instance] : is_hprop (is_equiv f) :=
-  is_hprop_of_imp_is_contr
+  theorem is_prop_is_equiv [instance] : is_prop (is_equiv f) :=
+  is_prop_of_imp_is_contr
     (λ(H : is_equiv f), is_trunc_equiv_closed -2 (equiv.symm !is_equiv.sigma_char'))
 
   definition inv_eq_inv {A B : Type} {f f' : A → B} {Hf : is_equiv f} {Hf' : is_equiv f'}
     (p : f = f') : f⁻¹ = f'⁻¹ :=
-  apd011 inv p !is_hprop.elim
+  apd011 inv p !is_prop.elim
 
   /- contractible fibers -/
   definition is_contr_fun_of_is_equiv [H : is_equiv f] : is_contr_fun f :=
   is_contr_fiber_of_is_equiv f
 
-  definition is_hprop_is_contr_fun (f : A → B) : is_hprop (is_contr_fun f) := _
+  definition is_prop_is_contr_fun (f : A → B) : is_prop (is_contr_fun f) := _
 
   definition is_equiv_of_is_contr_fun [H : is_contr_fun f] : is_equiv f :=
   adjointify _ (λb, point (center (fiber f b)))
@@ -98,7 +98,84 @@ namespace is_equiv
   @is_equiv_of_is_contr_fun _ _ f (λb, @is_contr_fiber_of_is_equiv _ _ _ (H b) _)
 
   definition is_equiv_equiv_is_contr_fun : is_equiv f ≃ is_contr_fun f :=
-  equiv_of_is_hprop _ (λH, !is_equiv_of_is_contr_fun)
+  equiv_of_is_prop _ (λH, !is_equiv_of_is_contr_fun)
+
+end is_equiv
+
+/- Moving equivalences around in homotopies -/
+namespace is_equiv
+  variables {A B C : Type} (f : A → B) [Hf : is_equiv f]
+
+  include Hf
+
+  section pre_compose
+    variables (α : A → C) (β : B → C)
+
+    -- homotopy_inv_of_homotopy_pre is in init.equiv
+    protected definition inv_homotopy_of_homotopy_pre.is_equiv
+      : is_equiv (inv_homotopy_of_homotopy_pre f α β) :=
+    adjointify _ (homotopy_of_inv_homotopy_pre f α β)
+    abstract begin
+      intro q, apply eq_of_homotopy, intro b,
+      unfold inv_homotopy_of_homotopy_pre,
+      unfold homotopy_of_inv_homotopy_pre,
+      apply inverse, apply eq_bot_of_square,
+      apply eq_hconcat (ap02 α (adj_inv f b)),
+      apply eq_hconcat (ap_compose α f⁻¹ (right_inv f b))⁻¹,
+      apply natural_square_tr q (right_inv f b)
+    end end
+    abstract begin
+      intro p, apply eq_of_homotopy, intro a,
+      unfold inv_homotopy_of_homotopy_pre,
+      unfold homotopy_of_inv_homotopy_pre,
+      apply trans (con.assoc
+        (ap α (left_inv f a))⁻¹
+        (p (f⁻¹ (f a)))
+        (ap β (right_inv f (f a))))⁻¹,
+      apply inverse, apply eq_bot_of_square,
+      refine hconcat_eq _ (ap02 β (adj f a))⁻¹,
+      refine hconcat_eq _ (ap_compose β f (left_inv f a)),
+      apply natural_square_tr p (left_inv f a)
+    end end
+  end pre_compose
+
+  section post_compose
+    variables (α : C → A) (β : C → B)
+
+    -- homotopy_inv_of_homotopy_post is in init.equiv
+    protected definition inv_homotopy_of_homotopy_post.is_equiv
+      : is_equiv (inv_homotopy_of_homotopy_post f α β) :=
+    adjointify _ (homotopy_of_inv_homotopy_post f α β)
+    abstract begin
+      intro q, apply eq_of_homotopy, intro c,
+      unfold inv_homotopy_of_homotopy_post,
+      unfold homotopy_of_inv_homotopy_post,
+      apply trans (whisker_right
+       (ap_con f⁻¹ (right_inv f (β c))⁻¹ (ap f (q c))
+       ⬝ whisker_right (ap_inv f⁻¹ (right_inv f (β c)))
+        (ap f⁻¹ (ap f (q c)))) (left_inv f (α c))),
+      apply inverse, apply eq_bot_of_square,
+      apply eq_hconcat (adj_inv f (β c))⁻¹,
+      apply eq_vconcat (ap_compose f⁻¹ f (q c))⁻¹,
+      refine vconcat_eq _ (ap_id (q c)),
+      apply natural_square (left_inv f) (q c)
+    end end
+    abstract begin
+      intro p, apply eq_of_homotopy, intro c,
+      unfold inv_homotopy_of_homotopy_post,
+      unfold homotopy_of_inv_homotopy_post,
+      apply trans (whisker_left (right_inv f (β c))⁻¹
+        (ap_con f (ap f⁻¹ (p c)) (left_inv f (α c)))),
+      apply trans (con.assoc (right_inv f (β c))⁻¹ (ap f (ap f⁻¹ (p c)))
+        (ap f (left_inv f (α c))))⁻¹,
+      apply inverse, apply eq_bot_of_square,
+      refine hconcat_eq _ (adj f (α c)),
+      apply eq_vconcat (ap_compose f f⁻¹ (p c))⁻¹,
+      refine vconcat_eq _ (ap_id (p c)),
+      apply natural_square (right_inv f) (p c)
+    end end
+
+  end post_compose
 
 end is_equiv
 
@@ -129,7 +206,7 @@ namespace equiv
 
   definition equiv_mk_eq {f f' : A → B} [H : is_equiv f] [H' : is_equiv f'] (p : f = f')
       : equiv.mk f H = equiv.mk f' H' :=
-  apd011 equiv.mk p !is_hprop.elim
+  apd011 equiv.mk p !is_prop.elim
 
   definition equiv_eq {f f' : A ≃ B} (p : to_fun f = to_fun f') : f = f' :=
   by (cases f; cases f'; apply (equiv_mk_eq p))
@@ -164,11 +241,11 @@ namespace equiv
     : is_equiv (ap to_fun : f = f' → to_fun f = to_fun f') :=
   begin
     fapply adjointify,
-      {intro p, cases f with f H, cases f' with f' H', cases p, apply ap (mk f'), apply is_hprop.elim},
+      {intro p, cases f with f H, cases f' with f' H', cases p, apply ap (mk f'), apply is_prop.elim},
       {intro p, cases f with f H, cases f' with f' H', cases p,
-        apply @concat _ _ (ap to_fun (ap (equiv.mk f') (is_hprop.elim H H'))), {apply idp},
-        generalize is_hprop.elim H H', intro q, cases q, apply idp},
-      {intro p, cases p, cases f with f H, apply ap (ap (equiv.mk f)), apply is_hset.elim}
+        apply @concat _ _ (ap to_fun (ap (equiv.mk f') (is_prop.elim H H'))), {apply idp},
+        generalize is_prop.elim H H', intro q, cases q, apply idp},
+      {intro p, cases p, cases f with f H, apply ap (ap (equiv.mk f)), apply is_set.elim}
   end
 
   definition equiv_pathover {A : Type} {a a' : A} (p : a = a')
@@ -179,7 +256,24 @@ namespace equiv
     { intro a, apply equiv.sigma_char},
     { fapply sigma_pathover,
         esimp, apply arrow_pathover, exact r,
-        apply is_hprop.elimo}
+        apply is_prop.elimo}
   end
+
+  definition is_contr_equiv (A B : Type) [HA : is_contr A] [HB : is_contr B] : is_contr (A ≃ B) :=
+  begin
+    apply @is_contr_of_inhabited_prop, apply is_prop.mk,
+    intro x y, cases x with fx Hx, cases y with fy Hy, generalize Hy,
+    apply (eq_of_homotopy (λ a, !eq_of_is_contr)) ▸ (λ Hy, !is_prop.elim ▸ rfl),
+    apply equiv_of_is_contr_of_is_contr
+  end
+
+  definition is_trunc_succ_equiv (n : trunc_index) (A B : Type)
+  [HA : is_trunc n.+1 A] [HB : is_trunc n.+1 B] : is_trunc n.+1 (A ≃ B) :=
+  @is_trunc_equiv_closed _ _ n.+1 (equiv.symm !equiv.sigma_char)
+  (@is_trunc_sigma _ _ _ _ (λ f, !is_trunc_succ_of_is_prop))
+
+  definition is_trunc_equiv (n : trunc_index) (A B : Type)
+  [HA : is_trunc n A] [HB : is_trunc n B] : is_trunc n (A ≃ B) :=
+  by cases n; apply !is_contr_equiv; apply !is_trunc_succ_equiv
 
 end equiv

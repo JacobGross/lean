@@ -7,7 +7,7 @@ Definition of general colimits and sequential colimits.
 -/
 
 /- definition of a general colimit -/
-open eq nat quotient sigma equiv equiv.ops is_trunc
+open eq nat quotient sigma equiv is_trunc
 
 namespace colimit
 section
@@ -50,7 +50,7 @@ section
   theorem rec_cglue {P : colimit → Type}
     (Pincl : Π⦃i : I⦄ (x : A i), P (ι x))
     (Pglue : Π(j : J) (x : A (dom j)), Pincl (f j x) =[cglue j x] Pincl x)
-      {j : J} (x : A (dom j)) : apdo (rec Pincl Pglue) (cglue j x) = Pglue j x :=
+      {j : J} (x : A (dom j)) : apd (rec Pincl Pglue) (cglue j x) = Pglue j x :=
   !rec_eq_of_rel
 
   protected definition elim {P : Type} (Pincl : Π⦃i : I⦄ (x : A i), P)
@@ -68,7 +68,7 @@ section
       {j : J} (x : A (dom j)) : ap (elim Pincl Pglue) (cglue j x) = Pglue j x :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant (cglue j x)),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑elim,rec_cglue],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑elim,rec_cglue],
   end
 
   protected definition elim_type (Pincl : Π⦃i : I⦄ (x : A i), Type)
@@ -85,13 +85,13 @@ section
       {j : J} (x : A (dom j)) : transport (elim_type Pincl Pglue) (cglue j x) = Pglue j x :=
   by rewrite [tr_eq_cast_ap_fn,↑elim_type,elim_cglue];apply cast_ua_fn
 
-  protected definition rec_hprop {P : colimit → Type} [H : Πx, is_hprop (P x)]
+  protected definition rec_prop {P : colimit → Type} [H : Πx, is_prop (P x)]
     (Pincl : Π⦃i : I⦄ (x : A i), P (ι x)) (y : colimit) : P y :=
-  rec Pincl (λa b, !is_hprop.elimo) y
+  rec Pincl (λa b, !is_prop.elimo) y
 
-  protected definition elim_hprop {P : Type} [H : is_hprop P] (Pincl : Π⦃i : I⦄ (x : A i), P)
+  protected definition elim_prop {P : Type} [H : is_prop P] (Pincl : Π⦃i : I⦄ (x : A i), P)
     (y : colimit) : P :=
-  elim Pincl (λa b, !is_hprop.elim) y
+  elim Pincl (λa b, !is_prop.elim) y
 
 end
 end colimit
@@ -141,7 +141,7 @@ section
 
   theorem rec_glue {P : seq_colim → Type} (Pincl : Π⦃n : ℕ⦄ (a : A n), P (sι a))
     (Pglue : Π⦃n : ℕ⦄ (a : A n), Pincl (f a) =[glue a] Pincl a) {n : ℕ} (a : A n)
-      : apdo (rec Pincl Pglue) (glue a) = Pglue a :=
+      : apd (rec Pincl Pglue) (glue a) = Pglue a :=
   !rec_eq_of_rel
 
   protected definition elim {P : Type} (Pincl : Π⦃n : ℕ⦄ (a : A n), P)
@@ -158,7 +158,7 @@ section
       : ap (elim Pincl Pglue) (glue a) = Pglue a :=
   begin
     apply eq_of_fn_eq_fn_inv !(pathover_constant (glue a)),
-    rewrite [▸*,-apdo_eq_pathover_of_eq_ap,↑elim,rec_glue],
+    rewrite [▸*,-apd_eq_pathover_of_eq_ap,↑elim,rec_glue],
   end
 
   protected definition elim_type (Pincl : Π⦃n : ℕ⦄ (a : A n), Type)
@@ -175,13 +175,13 @@ section
       : transport (elim_type Pincl Pglue) (glue a) = Pglue a :=
   by rewrite [tr_eq_cast_ap_fn,↑elim_type,elim_glue];apply cast_ua_fn
 
-  protected definition rec_hprop {P : seq_colim → Type} [H : Πx, is_hprop (P x)]
+  protected definition rec_prop {P : seq_colim → Type} [H : Πx, is_prop (P x)]
     (Pincl : Π⦃n : ℕ⦄ (a : A n), P (sι a)) (aa : seq_colim) : P aa :=
-  rec Pincl (λa b, !is_hprop.elimo) aa
+  rec Pincl (λa b, !is_prop.elimo) aa
 
-  protected definition elim_hprop {P : Type} [H : is_hprop P] (Pincl : Π⦃n : ℕ⦄ (a : A n), P)
+  protected definition elim_prop {P : Type} [H : is_prop P] (Pincl : Π⦃n : ℕ⦄ (a : A n), P)
     : seq_colim → P :=
-  elim Pincl (λa b, !is_hprop.elim)
+  elim Pincl (λa b, !is_prop.elim)
 
 
 end

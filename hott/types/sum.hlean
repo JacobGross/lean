@@ -6,9 +6,9 @@ Author: Floris van Doorn
 Theorems about sums/coproducts/disjoint unions
 -/
 
-import .pi
+import .pi .equiv logic
 
-open lift eq is_equiv equiv equiv.ops prod prod.ops is_trunc sigma bool
+open lift eq is_equiv equiv prod prod.ops is_trunc sigma bool
 
 namespace sum
   universe variables u v u' v'
@@ -27,6 +27,13 @@ namespace sum
   | decode (inl a) (inr b') := λc, empty.elim (down c) _
   | decode (inr b) (inl a') := λc, empty.elim (down c) _
   | decode (inr b) (inr b') := λc, ap inr (down c)
+
+  protected definition mem_cases : (Σ a, z = inl a) + (Σ b, z = inr b) :=
+  by cases z with a b; exact inl ⟨a, idp⟩; exact inr ⟨b, idp⟩
+
+  protected definition eqrec {A B : Type} {C : A + B → Type}
+    (x : A + B) (cl : Π a, x = inl a → C (inl a)) (cr : Π b, x = inr b → C (inr b)) : C x :=
+  by cases x with a b; exact cl a idp; exact cr b idp
 
   variables {z z'}
   protected definition encode [unfold 3 4 5] (p : z = z') : sum.code z z' :=
@@ -152,7 +159,12 @@ namespace sum
     fapply equiv.MK,
       all_goals try (intro z; induction z with u v;
                      all_goals try induction u; all_goals try induction v),
-      all_goals try (repeat append (append (apply inl) (apply inr)) assumption; now),
+      exact inl (inl u),
+      exact inl (inr a),
+      exact inr a,
+      exact inl a,
+      exact inr (inl a),
+      exact inr (inr v),
       all_goals reflexivity
   end
 
@@ -167,6 +179,108 @@ namespace sum
 
   definition empty_sum_equiv (A : Type) : empty + A ≃ A :=
   !sum_comm_equiv ⬝e !sum_empty_equiv
+
+  definition bool_equiv_unit_sum_unit : bool ≃ unit + unit :=
+  begin
+    fapply equiv.MK,
+    { intro b, cases b, exact inl unit.star, exact inr unit.star },
+    { intro s, cases s, exact bool.ff, exact bool.tt },
+    { intro s, cases s, do 2 (cases a; reflexivity) },
+    { intro b, cases b, do 2 reflexivity },
+  end
+
+  definition sum_prod_right_distrib [constructor] (A B C : Type) :
+    (A + B) × C ≃ (A × C) + (B × C) :=
+  begin
+    fapply equiv.MK,
+    { intro x, cases x with ab c, cases ab with a b, exact inl (a, c), exact inr (b, c) },
+    { intro x, cases x with ac bc, cases ac with a c, exact (inl a, c),
+      cases bc with b c, exact (inr b, c) },
+    { intro x, cases x with ac bc, cases ac with a c, reflexivity, cases bc, reflexivity },
+    { intro x, cases x with ab c, cases ab with a b, do 2 reflexivity }
+  end
+
+  definition sum_prod_left_distrib [constructor] (A B C : Type) :
+    A × (B + C) ≃ (A × B) + (A × C) :=
+  calc A × (B + C) ≃ (B + C) × A : prod_comm_equiv
+               ... ≃ (B × A) + (C × A) : sum_prod_right_distrib
+               ... ≃ (A × B) + (C × A) : sum_equiv_sum_right !prod_comm_equiv
+               ... ≃ (A × B) + (A × C) : sum_equiv_sum_left  !prod_comm_equiv
+
+  section
+  variables (H : unit + A ≃ unit + B)
+  include H
+
+  open unit decidable sigma.ops
+
+  definition unit_sum_equiv_cancel_map : A → B :=
+  begin
+    intro a, cases sum.mem_cases (H (inr a)) with u b, rotate 1, exact b.1,
+    cases u with u Hu, cases sum.mem_cases (H (inl ⋆)) with u' b, rotate 1, exact b.1,
+    cases u' with u' Hu', exfalso, apply empty_of_inl_eq_inr,
+    calc inl ⋆ = H⁻¹ (H (inl ⋆)) : (to_left_inv H (inl ⋆))⁻¹
+           ... = H⁻¹ (inl u') : {Hu'}
+           ... = H⁻¹ (inl u) : is_prop.elim
+           ... = H⁻¹ (H (inr a)) : {Hu⁻¹}
+           ... = inr a : to_left_inv H (inr a)
+  end
+
+  definition unit_sum_equiv_cancel_inv (b : B) :
+    unit_sum_equiv_cancel_map H (unit_sum_equiv_cancel_map H⁻¹ᵉ b) = b :=
+  begin
+    esimp[unit_sum_equiv_cancel_map], apply sum.rec,
+    { intro x, cases x with u Hu, esimp, apply sum.rec,
+      { intro x, exfalso, cases x with u' Hu', apply empty_of_inl_eq_inr,
+        calc inl ⋆ = H⁻¹ (H (inl ⋆)) : (to_left_inv H (inl ⋆))⁻¹
+               ... = H⁻¹ (inl u')    : ap H⁻¹ Hu'
+               ... = H⁻¹ (inl u)     : {!is_prop.elim}
+               ... = H⁻¹ (H (inr _)) : {Hu⁻¹}
+               ... = inr _ : to_left_inv H },
+      { intro x, cases x with b' Hb', esimp, cases sum.mem_cases (H⁻¹ (inr b)) with x x,
+        { cases x with u' Hu', cases u', apply eq_of_inr_eq_inr,
+          calc inr b' = H (inl ⋆)       : Hb'⁻¹
+                  ... = H (H⁻¹ (inr b)) : (ap H Hu')⁻¹
+                  ... = inr b           : to_right_inv H (inr b)},
+        { exfalso, cases x with a Ha, apply empty_of_inl_eq_inr,
+          cases u, apply concat, apply Hu⁻¹, apply concat, rotate 1, apply !(to_right_inv H),
+          apply ap H,
+          apply concat, rotate 1, apply Ha⁻¹, apply ap inr, esimp,
+          apply sum.rec, intro x, exfalso, apply empty_of_inl_eq_inr,
+          apply concat, exact x.2⁻¹, apply Ha,
+          intro x, cases x with a' Ha', esimp, apply eq_of_inr_eq_inr, apply Ha'⁻¹ ⬝ Ha } } },
+    { intro x, cases x with b' Hb', esimp, apply eq_of_inr_eq_inr, refine Hb'⁻¹ ⬝ _,
+      cases sum.mem_cases (H⁻¹ (inr b)) with x x,
+      { cases x with u Hu, esimp, cases sum.mem_cases (H⁻¹ (inl ⋆)) with x x,
+        { cases x with u' Hu', exfalso, apply empty_of_inl_eq_inr,
+          calc inl ⋆ = H (H⁻¹ (inl ⋆))  : (to_right_inv H (inl ⋆))⁻¹
+                 ... = H (inl u')       : ap H Hu'
+                 ... = H (inl u)        : by rewrite [is_prop.elim u' u]
+                 ... = H (H⁻¹ (inr b))  : ap H Hu⁻¹
+                 ... = inr b            : to_right_inv H (inr b) },
+      { cases x with a Ha, exfalso, apply empty_of_inl_eq_inr,
+        apply concat, rotate 1, exact Hb',
+        have Ha' : inl ⋆ = H (inr a), by apply !(to_right_inv H)⁻¹ ⬝ ap H Ha,
+        apply concat Ha', apply ap H, apply ap inr, apply sum.rec,
+          intro x, cases x with u' Hu', esimp, apply sum.rec,
+            intro x, cases x with u'' Hu'', esimp, apply empty.rec,
+            intro x, cases x with a'' Ha'', esimp, krewrite Ha' at Ha'', apply eq_of_inr_eq_inr,
+            apply !(to_left_inv H)⁻¹ ⬝ Ha'',
+          intro x, exfalso, cases x with a'' Ha'', apply empty_of_inl_eq_inr,
+          apply Hu⁻¹ ⬝ Ha'', } },
+      { cases x with a' Ha', esimp, refine _ ⬝ !(to_right_inv H), apply ap H,
+        apply Ha'⁻¹ } }
+  end
+
+  definition unit_sum_equiv_cancel : A ≃ B :=
+  begin
+    fapply equiv.MK, apply unit_sum_equiv_cancel_map H,
+    apply unit_sum_equiv_cancel_map H⁻¹ᵉ,
+    intro b, apply unit_sum_equiv_cancel_inv,
+    { intro a, have H = (H⁻¹ᵉ)⁻¹ᵉ, from !equiv.symm_symm⁻¹, rewrite this at {2},
+      apply unit_sum_equiv_cancel_inv }
+  end
+
+  end
 
   /- universal property -/
 
@@ -208,9 +322,9 @@ namespace sum
     induction n with n IH,
     { exfalso, exact H !center !center},
     { clear IH, induction n with n IH,
-      { apply is_hprop.mk, intros x y,
+      { apply is_prop.mk, intros x y,
         induction x, all_goals induction y, all_goals esimp,
-        all_goals try (exfalso;apply H;assumption;assumption), all_goals apply ap _ !is_hprop.elim},
+        all_goals try (exfalso;apply H;assumption;assumption), all_goals apply ap _ !is_prop.elim},
       { apply is_trunc_sum}}
   end
 

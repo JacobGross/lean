@@ -10,6 +10,7 @@ Author: Leonardo de Moura
 #include <string>
 #include <util/utf8.h>
 #include "util/flet.h"
+#include "util/fresh_name.h"
 #include "kernel/replace_fn.h"
 #include "kernel/free_vars.h"
 #include "kernel/abstract.h"
@@ -58,7 +59,6 @@ static format * g_let_fmt         = nullptr;
 static format * g_in_fmt          = nullptr;
 static format * g_assign_fmt      = nullptr;
 static format * g_have_fmt        = nullptr;
-static format * g_assert_fmt      = nullptr;
 static format * g_from_fmt        = nullptr;
 static format * g_visible_fmt     = nullptr;
 static format * g_show_fmt        = nullptr;
@@ -123,7 +123,6 @@ void initialize_pp() {
     g_in_fmt          = new format(highlight_keyword(format("in")));
     g_assign_fmt      = new format(highlight_keyword(format(":=")));
     g_have_fmt        = new format(highlight_keyword(format("have")));
-    g_assert_fmt      = new format(highlight_keyword(format("assert")));
     g_from_fmt        = new format(highlight_keyword(format("from")));
     g_visible_fmt     = new format(highlight_keyword(format("[visible]")));
     g_show_fmt        = new format(highlight_keyword(format("show")));
@@ -150,7 +149,6 @@ void finalize_pp() {
     delete g_in_fmt;
     delete g_assign_fmt;
     delete g_have_fmt;
-    delete g_assert_fmt;
     delete g_from_fmt;
     delete g_visible_fmt;
     delete g_show_fmt;
@@ -251,9 +249,9 @@ expr pretty_fn::purify(expr const & e) {
             if (!has_expr_metavar(e) && !has_local(e) && (!m_universes || !has_univ_metavar(e)))
                 return some_expr(e);
             else if (is_metavar(e) && m_purify_metavars)
-                return some_expr(mk_metavar(mk_metavar_name(mlocal_name(e)), mlocal_type(e)));
+                return some_expr(mk_metavar(mk_metavar_name(mlocal_name(e)), m_ctx.infer(e)));
             else if (is_local(e))
-                return some_expr(mk_local(mlocal_name(e), mk_local_name(mlocal_name(e), local_pp_name(e)), mlocal_type(e), local_info(e)));
+                return some_expr(mk_local(mlocal_name(e), mk_local_name(mlocal_name(e), m_ctx.get_local_pp_name(e)), m_ctx.infer(e), local_info(e)));
             else if (is_constant(e))
                 return some_expr(update_constant(e, map(const_levels(e), [&](level const & l) { return purify(l); })));
             else if (is_sort(e))
@@ -320,8 +318,13 @@ bool pretty_fn::is_implicit(expr const & f) {
         return false;
     }
     try {
-        binder_info bi = binding_info(m_tc.ensure_pi(m_tc.infer(f).first).first);
-        return bi.is_implicit() || bi.is_strict_implicit() || bi.is_inst_implicit();
+        expr t = m_ctx.relaxed_whnf(m_ctx.infer(f));
+        if (is_pi(t)) {
+            binder_info bi = binding_info(t);
+            return bi.is_implicit() || bi.is_strict_implicit() || bi.is_inst_implicit();
+        } else {
+            return false;
+        }
     } catch (exception &) {
         return false;
     }
@@ -329,7 +332,10 @@ bool pretty_fn::is_implicit(expr const & f) {
 
 bool pretty_fn::is_prop(expr const & e) {
     try {
-        return m_env.impredicative() && m_tc.is_prop(e).first;
+        if (!m_env.impredicative())
+            return false;
+        expr t = m_ctx.relaxed_whnf(m_ctx.infer(e));
+        return t == mk_Prop();
     } catch (exception &) {
         return false;
     }
@@ -623,15 +629,14 @@ bool pretty_fn::has_implicit_args(expr const & f) {
         // there are no implicit arguments.
         return false;
     }
-    name_generator ngen(*g_tmp_prefix);
     try {
-        expr type = m_tc.whnf(m_tc.infer(f).first).first;
+        expr type = m_ctx.relaxed_whnf(m_ctx.infer(f));
         while (is_pi(type)) {
             binder_info bi = binding_info(type);
             if (bi.is_implicit() || bi.is_strict_implicit() || bi.is_inst_implicit())
                 return true;
-            expr local = mk_local(ngen.next(), binding_name(type), binding_domain(type), binding_info(type));
-            type = m_tc.whnf(instantiate(binding_body(type), local)).first;
+            expr local = m_ctx.mk_tmp_local(binding_name(type), binding_domain(type), binding_info(type));
+            type = m_ctx.relaxed_whnf(instantiate(binding_body(type), local));
         }
         return false;
     } catch (exception &) {
@@ -771,7 +776,7 @@ auto pretty_fn::pp_have(expr const & e) -> result {
     format type_fmt  = pp_child(mlocal_type(local), 0).fmt();
     format proof_fmt = pp_child(proof, 0).fmt();
     format body_fmt  = pp_child(body, 0).fmt();
-    format head_fmt  = (binding_info(binding).is_contextual()) ? *g_assert_fmt : *g_have_fmt;
+    format head_fmt  = *g_have_fmt;
     format r = head_fmt + space() + format(n) + space();
     r += colon() + nest(m_indent, line() + type_fmt + comma() + space() + *g_from_fmt);
     r = group(r);
@@ -824,7 +829,7 @@ auto pretty_fn::pp_macro(expr const & e) -> result {
 auto pretty_fn::pp_let(expr e) -> result {
     buffer<pair<name, expr>> decls;
     while (true) {
-        if (!is_let(e))
+        if (!is_let_macro(e))
             break;
         name n   = get_let_var_name(e);
         expr v   = get_let_value(e);
@@ -879,7 +884,6 @@ static unsigned get_num_parameters(notation_entry const & entry) {
         case notation::action_kind::Exprs:
         case notation::action_kind::ScopedExpr:
         case notation::action_kind::Ext:
-        case notation::action_kind::LuaExt:
             r++;
         }
     }
@@ -951,10 +955,12 @@ bool pretty_fn::match(expr const & p, expr const & e, buffer<optional<expr>> & a
             return true;
         } else {
             try {
-                expr fn_type = m_tc.infer(e_fn).first;
+                expr fn_type = m_ctx.infer(e_fn);
                 unsigned j = 0;
                 for (unsigned i = 0; i < e_args.size(); i++) {
-                    fn_type                  = m_tc.ensure_pi(fn_type).first;
+                    fn_type = m_ctx.relaxed_whnf(fn_type);
+                    if (!is_pi(fn_type))
+                        return false;
                     expr const & body        = binding_body(fn_type);
                     binder_info const & info = binding_info(fn_type);
                     if ((!consume || closed(body)) && is_explicit(info)) {
@@ -967,7 +973,7 @@ bool pretty_fn::match(expr const & p, expr const & e, buffer<optional<expr>> & a
                     fn_type = instantiate(body, e_args[i]);
                 }
                 return j == p_args.size();
-            } catch (exception&) {
+            } catch (exception &) {
                 return false;
             }
         }
@@ -1166,7 +1172,6 @@ auto pretty_fn::pp_notation(notation_entry const & entry, buffer<optional<expr>>
                     break;
                 }
             case notation::action_kind::Ext:
-            case notation::action_kind::LuaExt:
                 return optional<result>();
             }
             token_lbp = get_some_precedence(m_token_table, tk);
@@ -1258,7 +1263,7 @@ auto pretty_fn::pp(expr const & e, bool ignore_hide) -> result {
     if (is_placeholder(e))  return result(*g_placeholder_fmt);
     if (is_show(e))         return pp_show(e);
     if (is_have(e))         return pp_have(e);
-    if (is_let(e))          return pp_let(e);
+    if (is_let_macro(e))    return pp_let(e);
     if (is_typed_expr(e))   return pp(get_typed_expr_expr(e));
     if (is_let_value(e))    return pp(get_let_value_expr(e));
     if (m_num_nat_coe)
@@ -1277,12 +1282,15 @@ auto pretty_fn::pp(expr const & e, bool ignore_hide) -> result {
     case expr_kind::Lambda:    return pp_lambda(e);
     case expr_kind::Pi:        return pp_pi(e);
     case expr_kind::Macro:     return pp_macro(e);
+    case expr_kind::Let:
+        // NOT IMPLEMENTED YET
+        lean_unreachable();
     }
     lean_unreachable(); // LCOV_EXCL_LINE
 }
 
-pretty_fn::pretty_fn(environment const & env, options const & o):
-    m_env(env), m_tc(env), m_token_table(get_token_table(env)) {
+pretty_fn::pretty_fn(environment const & env, options const & o, abstract_type_context & ctx):
+    m_env(env), m_ctx(ctx), m_token_table(get_token_table(env)) {
     set_options_core(o);
     m_meta_prefix   = "M";
     m_next_meta_idx = 1;
@@ -1291,10 +1299,10 @@ pretty_fn::pretty_fn(environment const & env, options const & o):
 // Custom beta reduction procedure for the pretty printer.
 // We don't want to reduce application in show annotations.
 class pp_beta_reduce_fn : public replace_visitor {
-    virtual expr visit_meta(expr const & e) { return e; }
-    virtual expr visit_local(expr const & e) { return e; }
+    virtual expr visit_meta(expr const & e) override { return e; }
+    virtual expr visit_local(expr const & e) override { return e; }
 
-    virtual expr visit_macro(expr const & e) {
+    virtual expr visit_macro(expr const & e) override {
         if (is_show_annotation(e) && is_app(get_annotation_arg(e))) {
             expr const & n = get_annotation_arg(e);
             expr new_fn  = visit(app_fn(n));
@@ -1305,7 +1313,7 @@ class pp_beta_reduce_fn : public replace_visitor {
         }
     }
 
-    virtual expr visit_app(expr const & e) {
+    virtual expr visit_app(expr const & e) override {
         expr new_e = replace_visitor::visit_app(e);
         if (is_head_beta(new_e))
             return visit(head_beta_reduce(new_e));
@@ -1382,8 +1390,8 @@ format pretty_fn::operator()(expr const & e) {
 }
 
 formatter_factory mk_pretty_formatter_factory() {
-    return [](environment const & env, options const & o) { // NOLINT
-        auto fn_ptr = std::make_shared<pretty_fn>(env, o);
+    return [](environment const & env, options const & o, abstract_type_context & ctx) { // NOLINT
+        auto fn_ptr = std::make_shared<pretty_fn>(env, o, ctx);
         return formatter(o, [=](expr const & e, options const & new_o) {
                 fn_ptr->set_options(new_o);
                 return (*fn_ptr)(e);
@@ -1401,18 +1409,22 @@ static options mk_options(bool detail) {
 }
 
 static void pp_core(environment const & env, expr const & e, bool detail) {
+    type_checker tc(env);
     io_state ios(mk_pretty_formatter_factory(), mk_options(detail));
-    regular(env, ios) << e << "\n";
+    regular(env, ios, tc.get_type_context()) << e << "\n";
 }
 
 static void pp_core(environment const & env, goal const & g, bool detail) {
+    type_checker tc(env);
     io_state ios(mk_pretty_formatter_factory(), mk_options(detail));
-    regular(env, ios) << g << "\n";
+    regular(env, ios, tc.get_type_context()) << g << "\n";
 }
 
 static void pp_core(environment const & env, proof_state const & s, bool detail) {
+    type_checker tc(env);
     io_state ios(mk_pretty_formatter_factory(), mk_options(detail));
-    regular(env, ios) << s.pp(env, ios) << "\n";
+    auto out = regular(env, ios, tc.get_type_context());
+    out << s.pp(out.get_formatter()) << "\n";
 }
 }
 // for debugging purposes

@@ -14,7 +14,7 @@ open bool unit is_trunc sum eq functor equiv
 namespace category
 
   variables {A : Type} (R : A → A → Type) (H : Π⦃a b c⦄, R a b → R b c → empty)
-    [HR : Πa b, is_hset (R a b)] [HA : is_trunc 1 A]
+    [HR : Πa b, is_set (R a b)] [HA : is_trunc 1 A]
 
   include H HR HA
 
@@ -63,19 +63,21 @@ namespace category
   | f2 : equalizer_category_hom ff tt
 
   open equalizer_category_hom
-  theorem is_hset_equalizer_category_hom (b₁ b₂ : bool) : is_hset (equalizer_category_hom b₁ b₂) :=
+  theorem is_set_equalizer_category_hom (b₁ b₂ : bool) : is_set (equalizer_category_hom b₁ b₂) :=
   begin
-    assert H : Πb b', equalizer_category_hom b b' ≃ bool.rec (bool.rec empty bool) (λb, empty) b b',
-    { intro b b', fapply equiv.MK,
+    have H : Πb b', equalizer_category_hom b b' ≃ bool.rec (bool.rec empty bool) (λb, empty) b b',
+    begin
+      intro b b', fapply equiv.MK,
       { intro x, induction x, exact ff, exact tt},
       { intro v, induction b: induction b': induction v, exact f1, exact f2},
       { intro v, induction b: induction b': induction v: reflexivity},
-      { intro x, induction x: reflexivity}},
+      { intro x, induction x: reflexivity}
+    end,
     apply is_trunc_equiv_closed_rev, apply H,
     induction b₁: induction b₂: exact _
   end
 
-  local attribute is_hset_equalizer_category_hom [instance]
+  local attribute is_set_equalizer_category_hom [instance]
   definition equalizer_category [constructor] : Precategory :=
   sparse_category
     equalizer_category_hom
@@ -107,22 +109,24 @@ namespace category
   | f2 : pullback_category_hom BL BR
 
   open pullback_category_hom
-  theorem is_hset_pullback_category_hom (b₁ b₂ : pullback_category_ob)
-    : is_hset (pullback_category_hom b₁ b₂) :=
+  theorem is_set_pullback_category_hom (b₁ b₂ : pullback_category_ob)
+    : is_set (pullback_category_hom b₁ b₂) :=
   begin
-    assert H : Πb b', pullback_category_hom b b' ≃
+    have H : Πb b', pullback_category_hom b b' ≃
       pullback_category_ob.rec (λb, empty) (λb, empty)
                               (pullback_category_ob.rec unit unit empty) b' b,
-    { intro b b', fapply equiv.MK,
+    begin
+      intro b b', fapply equiv.MK,
       { intro x, induction x: exact star},
       { intro v, induction b: induction b': induction v, exact f1, exact f2},
       { intro v, induction b: induction b': induction v: reflexivity},
-      { intro x, induction x: reflexivity}},
+      { intro x, induction x: reflexivity}
+    end,
     apply is_trunc_equiv_closed_rev, apply H,
     induction b₁: induction b₂: exact _
   end
 
-  local attribute is_hset_pullback_category_hom pullback_category_ob_decidable_equality [instance]
+  local attribute is_set_pullback_category_hom pullback_category_ob_decidable_equality [instance]
   definition pullback_category [constructor] : Precategory :=
   sparse_category
     pullback_category_hom

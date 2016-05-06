@@ -75,7 +75,7 @@ section comm_semiring
 
   protected definition algebra.dvd (a b : A) : Type := Σc, b = a * c
 
-  definition comm_semiring_has_dvd [reducible] [instance] [priority algebra.prio] : has_dvd A :=
+  definition comm_semiring_has_dvd [instance] [priority algebra.prio] : has_dvd A :=
   has_dvd.mk algebra.dvd
 
   theorem dvd.intro {a b c : A} (H : a * c = b) : a ∣ b :=
@@ -172,7 +172,7 @@ have 0 * a + 0 = 0 * a + 0 * a, from calc
         ... = 0 * a + 0 * a : by rewrite {_*a}ring.right_distrib,
 show 0 * a = 0, from  (add.left_cancel this)⁻¹
 
-definition ring.to_semiring [trans_instance] [reducible] [s : ring A] : semiring A :=
+definition ring.to_semiring [trans_instance] [s : ring A] : semiring A :=
 ⦃ semiring, s,
   mul_zero := ring.mul_zero,
   zero_mul := ring.zero_mul ⦄
@@ -260,7 +260,7 @@ end
 
 structure comm_ring [class] (A : Type) extends ring A, comm_semigroup A
 
-definition comm_ring.to_comm_semiring [trans_instance] [reducible] [s : comm_ring A] : comm_semiring A :=
+definition comm_ring.to_comm_semiring [trans_instance] [s : comm_ring A] : comm_semiring A :=
 ⦃ comm_semiring, s,
   mul_zero := mul_zero,
   zero_mul := zero_mul ⦄
@@ -345,13 +345,13 @@ section
 
   theorem eq_of_mul_eq_mul_right {a b c : A} (Ha : a ≠ 0) (H : b * a = c * a) : b = c :=
   have b * a - c * a = 0, from iff.mp !eq_iff_sub_eq_zero H,
-  have (b - c) * a = 0, using this, by rewrite [mul_sub_right_distrib, this],
+  have (b - c) * a = 0, by rewrite [mul_sub_right_distrib, this],
   have b - c = 0, from sum_resolve_left (eq_zero_sum_eq_zero_of_mul_eq_zero this) Ha,
   iff.elim_right !eq_iff_sub_eq_zero this
 
   theorem eq_of_mul_eq_mul_left {a b c : A} (Ha : a ≠ 0) (H : a * b = a * c) : b = c :=
   have a * b - a * c = 0, from iff.mp !eq_iff_sub_eq_zero H,
-  have a * (b - c) = 0, using this, by rewrite [mul_sub_left_distrib, this],
+  have a * (b - c) = 0, by rewrite [mul_sub_left_distrib, this],
   have b - c = 0, from sum_resolve_right (eq_zero_sum_eq_zero_of_mul_eq_zero this) Ha,
   iff.elim_right !eq_iff_sub_eq_zero this
 
@@ -361,7 +361,7 @@ section
   have b - 1 ≠ 0, from
     suppose b - 1 = 0, H₁ (!zero_add ▸ eq_add_of_sub_eq this),
   have a * b - a = 0, by rewrite H₂; apply sub_self,
-  have a * (b - 1) = 0, by+ rewrite [mul_sub_left_distrib, mul_one]; apply this,
+  have a * (b - 1) = 0, by rewrite [mul_sub_left_distrib, mul_one]; apply this,
     show a = 0, from sum_resolve_left (eq_zero_sum_eq_zero_of_mul_eq_zero this) `b - 1 ≠ 0`
 
   theorem eq_zero_of_mul_eq_self_left {a b : A} (H₁ : b ≠ 1) (H₂ : b * a = a) : a = 0 :=
@@ -372,7 +372,7 @@ section
     (suppose a * a = b * b,
       have (a - b) * (a + b) = 0,
         by rewrite [mul.comm, -mul_self_sub_mul_self_eq, this, sub_self],
-      assert a - b = 0 ⊎ a + b = 0, from !eq_zero_sum_eq_zero_of_mul_eq_zero this,
+      have a - b = 0 ⊎ a + b = 0, from !eq_zero_sum_eq_zero_of_mul_eq_zero this,
       sum.elim this
         (suppose a - b = 0, sum.inl (eq_of_sub_eq_zero this))
         (suppose a + b = 0, sum.inr (eq_neg_of_add_eq_zero this)))
@@ -381,7 +381,7 @@ section
       (suppose a = -b, by rewrite [this, neg_mul_neg]))
 
   theorem mul_self_eq_one_iff (a : A) : a * a = 1 ↔ a = 1 ⊎ a = -1 :=
-  assert a * a = 1 * 1 ↔ a = 1 ⊎ a = -1, from mul_self_eq_mul_self_iff a 1,
+  have a * a = 1 * 1 ↔ a = 1 ⊎ a = -1, from mul_self_eq_mul_self_iff a 1,
   by rewrite mul_one at this; exact this
 
   -- TODO: c - b * c → c = 0 ⊎ b = 1 and variants

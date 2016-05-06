@@ -10,6 +10,7 @@ Author: Leonardo de Moura
 #include <algorithm>
 #include <string>
 #include "util/sstream.h"
+#include "util/fresh_name.h"
 #include "util/sexpr/option_declarations.h"
 #include "kernel/type_checker.h"
 #include "kernel/instantiate.h"
@@ -17,6 +18,8 @@ Author: Leonardo de Moura
 #include "kernel/replace_fn.h"
 #include "kernel/error_msgs.h"
 #include "kernel/inductive/inductive.h"
+#include "library/trace.h"
+#include "library/attribute_manager.h"
 #include "library/scoped_ext.h"
 #include "library/normalize.h"
 #include "library/placeholder.h"
@@ -25,6 +28,7 @@ Author: Leonardo de Moura
 #include "library/unifier.h"
 #include "library/module.h"
 #include "library/aliases.h"
+#include "library/annotation.h"
 #include "library/coercion.h"
 #include "library/explicit.h"
 #include "library/protected.h"
@@ -86,7 +90,6 @@ struct structure_cmd_fn {
 
     parser &                    m_p;
     environment                 m_env;
-    name_generator              m_ngen;
     type_checker_ptr            m_tc;
     name                        m_namespace;
     name                        m_name;
@@ -105,16 +108,20 @@ struct structure_cmd_fn {
     buffer<expr>                m_fields;
     std::vector<rename_vector>  m_renames;
     std::vector<field_map>      m_field_maps;
+    bool                        m_explicit_universe_params;
     bool                        m_infer_result_universe;
+    bool                        m_inductive_predicate;
     levels                      m_ctx_levels; // context levels for creating aliases
     buffer<expr>                m_ctx_locals; // context local constants for creating aliases
 
     bool                        m_gen_eta;
     bool                        m_gen_proj_mk;
 
-    structure_cmd_fn(parser & p):m_p(p), m_env(p.env()), m_ngen(p.mk_ngen()), m_namespace(get_namespace(m_env)) {
-        m_tc = mk_type_checker(m_env, m_p.mk_ngen());
-        m_infer_result_universe = false;
+    structure_cmd_fn(parser & p):m_p(p), m_env(p.env()), m_namespace(get_namespace(m_env)) {
+        m_tc = mk_type_checker(m_env);
+        m_explicit_universe_params = false;
+        m_infer_result_universe    = false;
+        m_inductive_predicate      = false;
         m_gen_eta     = get_structure_eta_thm(p.get_options());
         m_gen_proj_mk = get_structure_proj_mk_thm(p.get_options());
     }
@@ -126,10 +133,12 @@ struct structure_cmd_fn {
         m_name = m_namespace + m_name;
         buffer<name> ls_buffer;
         if (parse_univ_params(m_p, ls_buffer)) {
-            m_infer_result_universe = false;
+            m_explicit_universe_params = true;
+            m_infer_result_universe    = false;
             m_level_names.append(ls_buffer);
         } else {
-            m_infer_result_universe = true;
+            m_explicit_universe_params = false;
+            m_infer_result_universe    = true;
         }
         m_modifiers.parse(m_p);
     }
@@ -238,8 +247,15 @@ struct structure_cmd_fn {
         if (m_p.curr_is_token(get_colon_tk())) {
             m_p.next();
             m_type = m_p.parse_expr();
+            while (is_annotation(m_type))
+                m_type = get_annotation_arg(m_type);
+            m_inductive_predicate = m_env.impredicative() && is_zero(sort_level(m_type));
             if (!is_sort(m_type))
                 throw parser_error("invalid 'structure', 'Type' expected", pos);
+
+            if (m_inductive_predicate)
+                m_infer_result_universe = false;
+
             if (m_infer_result_universe) {
                 if (!is_placeholder(sort_level(m_type)))
                     throw parser_error("invalid 'structure', resultant universe level is computed "
@@ -247,10 +263,6 @@ struct structure_cmd_fn {
             } else {
                 if (has_placeholder(m_type))
                     throw_explicit_universe(pos);
-                level l = sort_level(m_type);
-                if (m_env.impredicative() && !is_not_zero(l))
-                    throw parser_error("invalid 'structure', the resultant universe level should not be zero "
-                                       "for any universe parameter assignment", pos);
             }
         } else {
             if (!m_infer_result_universe)
@@ -297,7 +309,7 @@ struct structure_cmd_fn {
         buffer<expr> tmp_locals;
         tmp_locals.append(m_params);
         for (expr const & parent : m_parents)
-            tmp_locals.push_back(mk_local(m_ngen.next(), parent));
+            tmp_locals.push_back(mk_local(mk_fresh_name(), parent));
 
         collected_locals dep_set;
         for (expr const & v : include_vars) {
@@ -307,8 +319,15 @@ struct structure_cmd_fn {
         for (expr const & p : m_params)
             ::lean::collect_locals(mlocal_type(p), dep_set);
         collect_annonymous_inst_implicit(m_p, dep_set);
+        /* Copy the locals from dep_set that are NOT in m_params to dep_set_minus_params */
+        buffer<expr> dep_set_minus_params;
+        for (auto d : dep_set.get_collected()) {
+            if (std::all_of(m_params.begin(), m_params.end(), [&](expr const & p) { return mlocal_name(d) != mlocal_name(p); }))
+                dep_set_minus_params.push_back(d);
+        }
+        /* Sort dep_set_minus_params and store result in ctx */
         buffer<expr> ctx;
-        sort_locals(dep_set.get_collected(), m_p, ctx);
+        sort_locals(dep_set_minus_params, m_p, ctx);
 
         expr tmp       = Pi_as_is(ctx, Pi(tmp_locals, m_type, m_p), m_p);
         level_param_names new_ls;
@@ -432,7 +451,7 @@ struct structure_cmd_fn {
         bool use_exceptions = true;
         bool discard        = true;
         unifier_config cfg(use_exceptions, discard);
-        unify_result_seq rseq = unify(m_env, cs.size(), cs.data(), m_ngen.mk_child(), substitution(), cfg);
+        unify_result_seq rseq = unify(m_env, cs.size(), cs.data(), substitution(), cfg);
         auto p = rseq.pull();
         lean_assert(p);
         substitution subst = p->first.first;
@@ -454,7 +473,7 @@ struct structure_cmd_fn {
 
     /** \brief Add params, fields and references to parent structures into parser local scope */
     void add_locals() {
-        if (!m_infer_result_universe) {
+        if (m_explicit_universe_params) {
             for (name const & l : m_level_names)
                 m_p.add_local_level(l, mk_param_univ(l));
         }
@@ -605,6 +624,7 @@ struct structure_cmd_fn {
         expr tmp   = Pi(m_params, Pi(m_fields, dummy));
         collected_locals local_set;
         ::lean::collect_locals(tmp, local_set);
+        collect_annonymous_inst_implicit(m_p, local_set);
         sort_locals(local_set.get_collected(), m_p, locals);
     }
 
@@ -801,7 +821,7 @@ struct structure_cmd_fn {
             binder_info bi;
             if (m_modifiers.is_class())
                 bi = mk_inst_implicit_binder_info();
-            expr st                        = mk_local(m_ngen.next(), "s", st_type, bi);
+            expr st                        = mk_local(mk_fresh_name(), "s", st_type, bi);
             expr coercion_type             = infer_implicit(Pi(m_params, Pi(st, parent)), m_params.size(), true);;
             expr coercion_value            = parent_intro;
             for (unsigned idx : fmap) {
@@ -823,7 +843,7 @@ struct structure_cmd_fn {
                     m_env = add_coercion(m_env, m_p.ios(), coercion_name, get_namespace(m_env), true);
                 if (m_modifiers.is_class() && is_class(m_env, parent_name)) {
                     // if both are classes, then we also mark coercion_name as an instance
-                    m_env = add_trans_instance(m_env, coercion_name, get_namespace(m_env), true);
+                    m_env = add_trans_instance(m_env, coercion_name, LEAN_DEFAULT_PRIORITY, get_namespace(m_env), true);
                 }
             }
         }
@@ -837,7 +857,7 @@ struct structure_cmd_fn {
         level_param_names lnames = to_list(m_level_names.begin(), m_level_names.end());
         levels st_ls             = param_names_to_levels(lnames);
         expr st_type             = mk_app(mk_constant(m_name, st_ls), m_params);
-        expr st                  = mk_local(m_ngen.next(), "s", st_type, binder_info());
+        expr st                  = mk_local(mk_fresh_name(), "s", st_type, binder_info());
         expr lhs                 = mk_app(mk_constant(m_mk, st_ls), m_params);
         for (expr const & field : m_fields) {
             expr proj = mk_app(mk_app(mk_constant(m_name + mlocal_name(field), st_ls), m_params), st);
@@ -939,9 +959,11 @@ struct structure_cmd_fn {
         declare_projections();
         declare_auxiliary();
         declare_coercions();
-        declare_eta();
-        declare_proj_over_mk();
-        declare_no_confustion();
+        if (!m_inductive_predicate) {
+            declare_eta();
+            declare_proj_over_mk();
+            declare_no_confustion();
+        }
         return m_env;
     }
 };

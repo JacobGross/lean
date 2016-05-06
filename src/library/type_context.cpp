@@ -11,6 +11,7 @@ Author: Leonardo de Moura
 #include "kernel/instantiate.h"
 #include "kernel/abstract.h"
 #include "kernel/for_each_fn.h"
+#include "kernel/replace_fn.h"
 #include "kernel/inductive/inductive.h"
 #include "library/trace.h"
 #include "library/util.h"
@@ -23,6 +24,7 @@ Author: Leonardo de Moura
 #include "library/generic_exception.h"
 #include "library/class.h"
 #include "library/constants.h"
+#include "library/unification_hint.h"
 
 #ifndef LEAN_DEFAULT_CLASS_INSTANCE_MAX_DEPTH
 #define LEAN_DEFAULT_CLASS_INSTANCE_MAX_DEPTH 32
@@ -46,32 +48,6 @@ bool get_class_trans_instances(options const & o) {
     return o.get_bool(*g_class_trans_instances, LEAN_DEFAULT_CLASS_TRANS_INSTANCES);
 }
 
-tmp_local_generator::tmp_local_generator():
-    m_next_local_idx(0) {}
-
-name tmp_local_generator::mk_fresh_name() {
-    unsigned idx = m_next_local_idx;
-    m_next_local_idx++;
-    return name(*g_tmp_prefix, idx);
-}
-
-expr tmp_local_generator::mk_tmp_local(expr const & type, binder_info const & bi) {
-    name n = mk_fresh_name();
-    return lean::mk_local(n, n, type, bi);
-}
-
-expr tmp_local_generator::mk_tmp_local(name const & pp_n, expr const & type, binder_info const & bi) {
-    name n = mk_fresh_name();
-    return lean::mk_local(n, pp_n, type, bi);
-}
-
-bool tmp_local_generator::is_tmp_local(expr const & e) const {
-    if (!is_local(e))
-        return false;
-    name const & n = mlocal_name(e);
-    return !n.is_atomic() && n.get_prefix() == *g_tmp_prefix;
-}
-
 struct type_context::ext_ctx : public extension_context {
     type_context & m_owner;
 
@@ -91,22 +67,14 @@ struct type_context::ext_ctx : public extension_context {
         return mk_pair(m_owner.infer(e), constraint_seq());
     }
 
-    virtual name mk_fresh_name() {
-        return m_owner.m_ngen.next();
-    }
-
     virtual optional<expr> is_stuck(expr const &) {
         return none_expr();
     }
 };
 
-type_context::type_context(environment const & env, options const & o, tmp_local_generator * gen,
-                           bool gen_owner, bool multiple_instances):
+type_context::type_context(environment const & env, options const & o, bool multiple_instances):
     m_env(env),
-    m_ngen(*g_internal_prefix),
     m_ext_ctx(new ext_ctx(*this)),
-    m_local_gen(gen),
-    m_local_gen_owner(gen_owner),
     m_proj_info(get_projection_info_map(env)) {
     m_pip                   = nullptr;
     m_ci_multiple_instances = multiple_instances;
@@ -120,16 +88,41 @@ type_context::type_context(environment const & env, options const & o, tmp_local
 }
 
 type_context::~type_context() {
-    if (m_local_gen_owner)
-        delete m_local_gen;
+}
+
+void type_context::push() {
+    m_infer_cache.push();
+    push_core();
+}
+
+void type_context::pop() {
+    pop_core();
+    m_infer_cache.pop();
+}
+
+expr type_context::mk_tmp_local(expr const & type, binder_info const & bi) {
+    name n = mk_tagged_fresh_name(*g_tmp_prefix);
+    return lean::mk_local(n, n, type, bi);
+}
+
+expr type_context::mk_tmp_local(name const & pp_name, expr const & type, binder_info const & bi) {
+    name n = mk_tagged_fresh_name(*g_tmp_prefix);
+    return lean::mk_local(n, pp_name, type, bi);
+}
+
+bool type_context::is_tmp_local(expr const & e) const {
+    if (!is_local(e))
+        return false;
+    name const & n = mlocal_name(e);
+    return is_tagged_by(n, *g_tmp_prefix);
 }
 
 expr type_context::mk_internal_local(name const & n, expr const & type, binder_info const & bi) {
-    return mk_local(m_ngen.next(), n, type, bi);
+    return mk_local(mk_tagged_fresh_name(*g_internal_prefix), n, type, bi);
 }
 
 expr type_context::mk_internal_local(expr const & type, binder_info const & bi) {
-    name n = m_ngen.next();
+    name n = mk_tagged_fresh_name(*g_internal_prefix);
     return mk_local(n, n, type, bi);
 }
 
@@ -137,7 +130,7 @@ bool type_context::is_internal_local(expr const & e) const {
     if (!is_local(e))
         return false;
     name const & n = mlocal_name(e);
-    return !n.is_atomic() && n.get_prefix() == m_ngen.prefix();
+    return is_tagged_by(n, *g_internal_prefix);
 }
 
 void type_context::set_local_instances(list<expr> const & insts) {
@@ -161,9 +154,23 @@ bool type_context::is_opaque(declaration const & d) const {
     return is_extra_opaque(n);
 }
 
+optional<declaration> type_context::is_transparent(name const & n) {
+    auto it = m_is_transparent_cache[m_relax_is_opaque].find(n);
+    if (it != m_is_transparent_cache[m_relax_is_opaque].end()) {
+        return it->second;
+    }
+    optional<declaration> r;
+    if (auto d = m_env.find(n)) {
+        if (d->is_definition() && !is_opaque(*d))
+            r = d;
+    }
+    m_is_transparent_cache[m_relax_is_opaque].insert(mk_pair(n, r));
+    return r;
+}
+
 optional<expr> type_context::expand_macro(expr const & m) {
     lean_assert(is_macro(m));
-    if (should_unfold_macro(m))
+    if (m_in_is_def_eq || should_unfold_macro(m))
         return macro_def(m).expand(m, *m_ext_ctx);
     else
         return none_expr();
@@ -212,6 +219,8 @@ expr type_context::whnf_core(expr const & e) {
     case expr_kind::Var: case expr_kind::Sort: case expr_kind::Meta: case expr_kind::Local:
     case expr_kind::Pi:  case expr_kind::Constant: case expr_kind::Lambda:
         return e;
+    case expr_kind::Let:
+        return whnf_core(instantiate(let_body(e), let_value(e)));
     case expr_kind::Macro:
         if (auto m = expand_macro(e))
             return whnf_core(*m);
@@ -242,9 +251,8 @@ expr type_context::whnf_core(expr const & e) {
 /** \brief Expand \c e if it is non-opaque constant with height >= h */
 expr type_context::unfold_name_core(expr e, unsigned h) {
     if (is_constant(e)) {
-        if (auto d = m_env.find(const_name(e))) {
-            if (d->is_definition() && !is_opaque(*d) && d->get_height() >= h &&
-                length(const_levels(e)) == d->get_num_univ_params())
+        if (auto d = is_transparent(const_name(e))) {
+            if (d->get_height() >= h && length(const_levels(e)) == d->get_num_univ_params())
                 return unfold_name_core(instantiate_value_univ_params(*d, const_levels(e)), h);
         }
     }
@@ -272,14 +280,13 @@ expr type_context::unfold_names(expr const & e, unsigned h) {
 
 /** \brief Return some definition \c d iff \c e is a target for delta-reduction,
     and the given definition is the one to be expanded. */
-optional<declaration> type_context::is_delta(expr const & e) const {
+optional<declaration> type_context::is_delta(expr const & e) {
     expr const & f = get_app_fn(e);
     if (is_constant(f)) {
-        if (auto d = m_env.find(const_name(f)))
-            if (d->is_definition() && !is_opaque(*d))
-                return d;
+        return is_transparent(const_name(f));
+    } else {
+        return none_declaration();
     }
-    return none_declaration();
 }
 
 /** \brief Weak head normal form core procedure that performs delta reduction
@@ -304,6 +311,7 @@ expr type_context::whnf(expr const & e) {
     case expr_kind::Var: case expr_kind::Sort: case expr_kind::Meta: case expr_kind::Local: case expr_kind::Pi:
         return e;
     case expr_kind::Lambda: case expr_kind::Macro: case expr_kind::App: case expr_kind::Constant:
+    case expr_kind::Let:
         break;
     }
 
@@ -567,22 +575,22 @@ struct instantiate_uvars_mvars_fn : public replace_visitor {
                          [](level const & l1, level const & l2) { return is_eqp(l1, l2); });
     }
 
-    virtual expr visit_sort(expr const & s) {
+    virtual expr visit_sort(expr const & s) override {
         return update_sort(s, visit_level(sort_level(s)));
     }
 
-    virtual expr visit_constant(expr const & c) {
+    virtual expr visit_constant(expr const & c) override {
         return update_constant(c, visit_levels(const_levels(c)));
     }
 
-    virtual expr visit_local(expr const & e) {
+    virtual expr visit_local(expr const & e) override {
         return update_mlocal(e, visit(mlocal_type(e)));
     }
 
-    virtual expr visit_meta(expr const & m) {
+    virtual expr visit_meta(expr const & m) override {
         if (m_owner.is_mvar(m)) {
             if (auto v1 = m_owner.get_assignment(m)) {
-                if (!has_expr_metavar(*v1)) {
+                if (!has_metavar(*v1)) {
                     return *v1;
                 } else {
                     expr v2 = m_owner.instantiate_uvars_mvars(*v1);
@@ -598,7 +606,7 @@ struct instantiate_uvars_mvars_fn : public replace_visitor {
         }
     }
 
-    virtual expr visit_app(expr const & e) {
+    virtual expr visit_app(expr const & e) override {
         buffer<expr> args;
         expr const & f = get_app_rev_args(e, args);
         if (m_owner.is_mvar(f)) {
@@ -625,7 +633,7 @@ struct instantiate_uvars_mvars_fn : public replace_visitor {
             return mk_rev_app(new_f, new_args, e.get_tag());
     }
 
-    virtual expr visit_macro(expr const & e) {
+    virtual expr visit_macro(expr const & e) override {
         lean_assert(is_macro(e));
         buffer<expr> new_args;
         for (unsigned i = 0; i < macro_num_args(e); i++)
@@ -633,7 +641,7 @@ struct instantiate_uvars_mvars_fn : public replace_visitor {
         return update_macro(e, new_args.size(), new_args.data());
     }
 
-    virtual expr visit(expr const & e) {
+    virtual expr visit(expr const & e) override {
         if (!has_expr_metavar(e) && !has_univ_metavar(e))
             return e;
         else
@@ -733,8 +741,8 @@ bool type_context::is_def_eq_proof_irrel(expr const & e1, expr const & e2) {
     if (!m_env.prop_proof_irrel())
         return false;
     expr e1_type = infer(e1);
-    expr e2_type = infer(e2);
     if (is_prop(e1_type)) {
+        expr e2_type = infer(e2);
         scope s(*this);
         if (is_def_eq_core(e1_type, e2_type)) {
             s.commit();
@@ -742,6 +750,10 @@ bool type_context::is_def_eq_proof_irrel(expr const & e1, expr const & e2) {
         }
     }
     return false;
+}
+
+bool type_context::validate_assignment_types(expr const & m, expr const & v) {
+    return is_def_eq_core(infer_metavar(m), infer(v));
 }
 
 /** \brief Given \c ma of the form <tt>?m t_1 ... t_n</tt>, (try to) assign
@@ -789,11 +801,8 @@ bool type_context::process_assignment_core(expr const & ma, expr const & v) {
 
     if (args.empty()) {
         // easy case
-        update_assignment(m, new_v);
-        return true;
     } else if (args.size() == locals.size()) {
-        update_assignment(m, Fun(locals, new_v));
-        return true;
+        new_v = Fun(locals, new_v);
     } else {
         // This case is imprecise since it is not a higher order pattern.
         // That the term \c ma is of the form (?m t_1 ... t_n) and the t_i's are not pairwise
@@ -810,9 +819,10 @@ bool type_context::process_assignment_core(expr const & ma, expr const & v) {
             m_type = instantiate(binding_body(m_type), locals[i]);
         }
         lean_assert(locals.size() == args.size());
-        update_assignment(m, Fun(locals, new_v));
-        return true;
+        new_v = Fun(locals, new_v);
     }
+    update_assignment(m, new_v);
+    return validate_assignment_types(m, new_v);
 }
 
 bool type_context::process_assignment(expr const & ma, expr const & v) {
@@ -877,6 +887,7 @@ lbool type_context::quick_is_def_eq(expr const & e1, expr const & e2) {
         case expr_kind::Meta:  case expr_kind::Var:
         case expr_kind::Local: case expr_kind::App:
         case expr_kind::Constant: case expr_kind::Macro:
+        case expr_kind::Let:
             // We do not handle these cases in this method.
             break;
         }
@@ -1008,10 +1019,7 @@ bool type_context::is_def_eq_core(expr const & t, expr const & s) {
     if (is_def_eq_proof_irrel(t_n, s_n))
         return true;
 
-    if (on_is_def_eq_failure(t_n, s_n))
-        return is_def_eq_core(t_n, s_n);
-    else
-        return false;
+    return on_is_def_eq_failure(t_n, s_n);
 }
 
 bool type_context::process_postponed(unsigned old_sz) {
@@ -1056,6 +1064,7 @@ bool type_context::process_postponed(unsigned old_sz) {
 
 bool type_context::is_def_eq(expr const & e1, expr const & e2) {
     scope s(*this);
+    flet<bool> in_is_def_eq(m_in_is_def_eq, true);
     unsigned psz = m_postponed.size();
     if (!is_def_eq_core(e1, e2)) {
         return false;
@@ -1094,6 +1103,7 @@ expr type_context::infer_lambda(expr e) {
         ls.push_back(l);
         e = binding_body(e);
     }
+    check_system("infer_type");
     expr t = infer(instantiate_rev(e, ls.size(), ls.data()));
     expr r = abstract_locals(t, ls.size(), ls.data());
     unsigned i = es.size();
@@ -1106,17 +1116,29 @@ expr type_context::infer_lambda(expr e) {
 
 optional<level> type_context::get_level_core(expr const & A) {
     expr A_type = relaxed_whnf(infer(A));
-    if (is_sort(A_type))
-        return some_level(sort_level(A_type));
-    else
-        return none_level();
+    while (true) {
+        if (is_sort(A_type)) {
+            return some_level(sort_level(A_type));
+        } else if (is_mvar(A_type)) {
+            if (auto v = get_assignment(A_type)) {
+                A_type = *v;
+            } else {
+                level r = mk_uvar();
+                update_assignment(A_type, mk_sort(r));
+                return some_level(r);
+            }
+        } else {
+            return none_level();
+        }
+    }
 }
 
 level type_context::get_level(expr const & A) {
-    if (auto r = get_level_core(A))
+    if (auto r = get_level_core(A)) {
         return *r;
-    else
+    } else {
         throw exception("infer type failed, sort expected");
+    }
 }
 
 expr type_context::infer_pi(expr const & e0) {
@@ -1151,6 +1173,7 @@ void type_context::ensure_pi(expr const & e, expr const & /* ref */) {
 }
 
 expr type_context::infer_app(expr const & e) {
+    check_system("infer_type");
     buffer<expr> args;
     expr const & f = get_app_args(e, args);
     expr f_type    = infer(f);
@@ -1172,8 +1195,9 @@ expr type_context::infer_app(expr const & e) {
 expr type_context::infer(expr const & e) {
     lean_assert(!is_var(e));
     lean_assert(closed(e));
-    check_system("infer_type");
-
+    auto it = m_infer_cache.find(e);
+    if (it != m_infer_cache.end())
+        return it->second;
     expr r;
     switch (e.kind()) {
     case expr_kind::Local:
@@ -1202,13 +1226,24 @@ expr type_context::infer(expr const & e) {
     case expr_kind::App:
         r = infer_app(e);
         break;
+    case expr_kind::Let:
+        r = infer(instantiate(let_body(e), let_value(e)));
+        break;
     }
-    // TODO(Leo): cache results if we have performance problems
+    m_infer_cache.insert(mk_pair(e, r));
     return r;
 }
 
 void type_context::clear_cache() {
     m_ci_cache.clear();
+    m_ss_cache.clear();
+    m_is_transparent_cache[0].clear();
+    m_is_transparent_cache[1].clear();
+    clear_infer_cache();
+}
+
+void type_context::clear_infer_cache() {
+    m_infer_cache.clear();
 }
 
 /** \brief If the constant \c e is a class, return its name */
@@ -1243,7 +1278,7 @@ lbool type_context::is_quick_class(expr const & type, name & result) {
     while (true) {
         switch (it->kind()) {
         case expr_kind::Var:  case expr_kind::Sort:   case expr_kind::Local:
-        case expr_kind::Meta: case expr_kind::Lambda:
+        case expr_kind::Meta: case expr_kind::Lambda: case expr_kind::Let:
             return l_false;
         case expr_kind::Macro:
             return l_undef;
@@ -1310,6 +1345,8 @@ bool type_context::compatible_local_instances(list<expr> const & ctx) {
 
 // Helper function for find_unsynth_metavar
 static bool has_meta_arg(expr e) {
+    if (!has_expr_metavar(e))
+        return false;
     while (is_app(e)) {
         if (is_meta(app_arg(e)))
             return true;
@@ -1322,7 +1359,7 @@ static bool has_meta_arg(expr e) {
     metavariable whose type is a type class, and (?m t_1 ... t_n) must be synthesized
     by type class resolution, then we return ?m.
     Otherwise, we return none */
-optional<pair<expr, expr>> type_context::find_unsynth_metavar(expr const & e) {
+optional<pair<expr, expr>> type_context::find_unsynth_metavar_at_args(expr const & e) {
     if (!has_meta_arg(e))
         return optional<pair<expr, expr>>();
     buffer<expr> args;
@@ -1349,19 +1386,138 @@ optional<pair<expr, expr>> type_context::find_unsynth_metavar(expr const & e) {
     return optional<pair<expr, expr>>();
 }
 
-bool type_context::on_is_def_eq_failure(expr & e1, expr & e2) {
+/** Search in \c e for an expression of the form (f ... (?m t_1 ... t_n) ...) where ?m is an unassigned
+    metavariable whose type is a type class, and (?m t_1 ... t_n) must be synthesized
+    by type class resolution, then we return ?m.
+    Otherwise, we return none.
+    This procedure goes inside lambdas. */
+optional<pair<expr, expr>> type_context::find_unsynth_metavar(expr const & e) {
+    if (!has_expr_metavar(e))
+        return optional<pair<expr, expr>>();
+    if (is_app(e)) {
+        if (auto r = find_unsynth_metavar_at_args(e))
+            return r;
+        expr it = e;
+        while (is_app(it)) {
+            if (auto r = find_unsynth_metavar(app_arg(it)))
+                return r;
+            it = app_fn(it);
+        }
+        return optional<pair<expr, expr>>();
+    } else if (is_lambda(e)) {
+        expr l = mk_tmp_local_from_binding(e);
+        return find_unsynth_metavar(instantiate(binding_body(e), l));
+    } else {
+        return optional<pair<expr, expr>>();
+    }
+}
+
+bool type_context::on_is_def_eq_failure(expr const & e1, expr const & e2) {
     if (is_app(e1)) {
         if (auto p1 = find_unsynth_metavar(e1)) {
             if (mk_nested_instance(p1->first, p1->second)) {
-                e1 = instantiate_uvars_mvars(e1);
-                return true;
+                return is_def_eq_core(instantiate_uvars_mvars(e1), e2);
             }
         }
     }
     if (is_app(e2)) {
         if (auto p2 = find_unsynth_metavar(e2)) {
             if (mk_nested_instance(p2->first, p2->second)) {
-                e2 = instantiate_uvars_mvars(e2);
+                return is_def_eq_core(e1, instantiate_uvars_mvars(e2));
+            }
+        }
+    }
+    if (try_unification_hints(e1, e2)) {
+        return true;
+    }
+    return false;
+}
+
+struct type_context::unification_hint_fn {
+    type_context & m_owner;
+    unification_hint m_hint;
+    buffer<optional<expr> > m_assignment;
+
+    unification_hint_fn(type_context & o, unification_hint const & hint):
+        m_owner(o), m_hint(hint) { m_assignment.resize(m_hint.get_num_vars()); }
+
+    bool syntactic_match(expr const & pattern, expr const & e) {
+        unsigned idx;
+        switch (pattern.kind()) {
+        case expr_kind::Var:
+            idx = var_idx(pattern);
+            if (!m_assignment[idx]) {
+                m_assignment[idx] = some_expr(e);
+                return true;
+            } else {
+                return m_owner.is_def_eq(*m_assignment[idx], e);
+            }
+        case expr_kind::Constant:
+            return is_constant(e) && const_name(pattern) == const_name(e)
+                && m_owner.is_def_eq(const_levels(pattern), const_levels(e));
+        case expr_kind::Sort:
+            return is_sort(e) && m_owner.is_def_eq(sort_level(pattern), sort_level(e));
+        case expr_kind::Pi: case expr_kind::Lambda: case expr_kind::Macro: case expr_kind::Let:
+            // Remark: we do not traverse inside of binders.
+            return pattern == e;
+        case expr_kind::App:
+            return is_app(e) && syntactic_match(app_fn(pattern), app_fn(e)) && syntactic_match(app_arg(pattern), app_arg(e));
+        case expr_kind::Local: case expr_kind::Meta:
+            break;
+        }
+        lean_unreachable();
+    }
+
+    bool operator()(expr const & lhs, expr const & rhs) {
+        if (!syntactic_match(m_hint.get_lhs(), lhs)) {
+            lean_trace(name({"type_context", "unification_hint"}), tout() << "LHS does not match\n";);
+            return false;
+        } else if (!syntactic_match(m_hint.get_rhs(), rhs)) {
+            lean_trace(name({"type_context", "unification_hint"}), tout() << "RHS does not match\n";);
+            return false;
+        } else {
+            auto instantiate_assignment_fn = [&](expr const & e, unsigned offset) {
+                if (is_var(e)) {
+                    unsigned idx = var_idx(e) + offset;
+                    if (idx < m_assignment.size()) {
+                        lean_assert(m_assignment[idx]);
+                        return m_assignment[idx];
+                    }
+                }
+                return none_expr();
+            };
+            buffer<expr_pair> constraints;
+            to_buffer(m_hint.get_constraints(), constraints);
+            for (expr_pair const & p : constraints) {
+                expr new_lhs = replace(p.first, instantiate_assignment_fn);
+                expr new_rhs = replace(p.second, instantiate_assignment_fn);
+                expr new_lhs_inst = m_owner.instantiate_uvars_mvars(new_lhs);
+                expr new_rhs_inst = m_owner.instantiate_uvars_mvars(new_rhs);
+                bool success = m_owner.is_def_eq(new_lhs, new_rhs);
+                lean_trace(name({"type_context", "unification_hint"}),
+                           tout() << new_lhs_inst << " =?= " << new_rhs_inst << "..."
+                           << (success ? "success" : "failed") << "\n";);
+                if (!success) return false;
+            }
+            lean_trace(name({"type_context", "unification_hint"}), tout() << "hint successfully applied\n";);
+            return true;
+        }
+    }
+};
+
+bool type_context::try_unification_hints(expr const & e1, expr const & e2) {
+    expr e1_fn = get_app_fn(e1);
+    expr e2_fn = get_app_fn(e2);
+    if (is_constant(e1_fn) && is_constant(e2_fn)) {
+        buffer<unification_hint> hints;
+        get_unification_hints(m_env, const_name(e1_fn), const_name(e2_fn), hints);
+        for (unification_hint const & hint : hints) {
+            scope s(*this);
+            lean_trace(name({"type_context", "unification_hint"}),
+                       tout() << e1 << " =?= " << e2
+                       << ", pattern: " << hint.get_lhs() << " =?= " << hint.get_rhs() << "\n";);
+            if (unification_hint_fn(*this, hint)(e1, e2)) {
+                s.commit();
                 return true;
             }
         }
@@ -1651,32 +1807,21 @@ void type_context::init_search(expr const & type) {
     m_ci_choices_ini_sz = m_ci_choices.size();
 }
 
-optional<expr> type_context::check_ci_cache(expr const & type) const {
-    if (m_ci_multiple_instances) {
+void type_context::cache_ci_result(expr const & type, optional<expr> const & inst) {
+    if (!m_ci_multiple_instances) {
         // We do not cache results when multiple instances have to be generated.
-        return none_expr();
+        m_ci_cache.insert(mk_pair(type, inst));
     }
-    auto it = m_ci_cache.find(type);
-    if (it != m_ci_cache.end())
-        return some_expr(it->second);
-    else
-        return none_expr();
-}
-
-void type_context::cache_ci_result(expr const & type, expr const & inst) {
-    if (m_ci_multiple_instances) {
-        // We do not cache results when multiple instances have to be generated.
-        return;
-    }
-    m_ci_cache.insert(mk_pair(type, inst));
 }
 
 optional<expr> type_context::ensure_no_meta(optional<expr> r) {
     while (true) {
-        if (!r)
+        if (!r) {
+            cache_ci_result(mlocal_type(m_ci_main_mvar), r);
             return none_expr();
+        }
         if (!has_expr_metavar_relaxed(*r)) {
-            cache_ci_result(mlocal_type(m_ci_main_mvar), *r);
+            cache_ci_result(mlocal_type(m_ci_main_mvar), r);
             return r;
         }
         r = next_solution();
@@ -1684,9 +1829,18 @@ optional<expr> type_context::ensure_no_meta(optional<expr> r) {
 }
 
 optional<expr> type_context::mk_class_instance_core(expr const & type) {
-    if (auto r = check_ci_cache(type)) {
-        lean_trace("class_instances", tout() << "cached instance for " << type << "\n" << *r << "\n";);
-        return r;
+    if (!m_ci_multiple_instances) {
+        /* We do not cache results when multiple instances have to be generated. */
+        auto it = m_ci_cache.find(type);
+        if (it != m_ci_cache.end()) {
+            /* instance/failure is already cached */
+            lean_trace("class_instances",
+                       if (it->second)
+                           tout() << "cached instance for " << type << "\n" << *(it->second) << "\n";
+                       else
+                           tout() << "cached failure for " << type << "\n";);
+            return it->second;
+        }
     }
     init_search(type);
     auto r = search();
@@ -1715,16 +1869,23 @@ optional<expr> type_context::mk_class_instance(expr const & type) {
 }
 
 optional<expr> type_context::mk_subsingleton_instance(expr const & type) {
+    auto it = m_ss_cache.find(type);
+    if (it != m_ss_cache.end())
+        return it->second;
     expr Type  = whnf(infer(type));
-    if (!is_sort(Type))
+    if (!is_sort(Type)) {
+        m_ss_cache.insert(mk_pair(type, none_expr()));
         return none_expr();
+    }
     level lvl    = sort_level(Type);
     expr subsingleton;
     if (is_standard(m_env))
         subsingleton = mk_app(mk_constant(get_subsingleton_name(), {lvl}), type);
     else
-        subsingleton = whnf(mk_app(mk_constant(get_is_trunc_is_hprop_name(), {lvl}), type));
-    return mk_class_instance(subsingleton);
+        subsingleton = whnf(mk_app(mk_constant(get_is_trunc_is_prop_name(), {lvl}), type));
+    auto r = mk_class_instance(subsingleton);
+    m_ss_cache.insert(mk_pair(type, r));
+    return r;
 }
 
 optional<expr> type_context::next_class_instance() {
@@ -1866,6 +2027,13 @@ bool default_type_context::ignore_universe_def_eq(level const & l1, level const 
     }
 }
 
+bool default_type_context::validate_assignment_types(expr const &, expr const &) {
+    // We disable this check because the interface between type_context and the elaborator unifier
+    // is currently quite brittle.
+    // Recall that this class is used to implement the type class inference in the Lean frontend.
+    return true;
+}
+
 expr normalizer::normalize_binding(expr const & e) {
     expr d = normalize(binding_domain(e));
     expr l = m_ctx.mk_tmp_local(binding_name(e), d, binding_info(e));
@@ -1960,6 +2128,9 @@ expr normalizer::normalize(expr e) {
         return normalize_binding(e);
     case expr_kind::App:
         return normalize_app(e);
+    case expr_kind::Let:
+        // whnf unfolds let-expressions
+        lean_unreachable();
     }
     lean_unreachable(); // LCOV_EXCL_LINE
 }
@@ -1974,6 +2145,7 @@ void initialize_type_context() {
     g_tmp_prefix      = new name(name::mk_internal_unique_name());
     g_internal_prefix = new name(name::mk_internal_unique_name());
     register_trace_class("class_instances");
+    register_trace_class(name({"type_context", "unification_hint"}));
     g_class_instance_max_depth     = new name{"class", "instance_max_depth"};
     g_class_trans_instances        = new name{"class", "trans_instances"};
     register_unsigned_option(*g_class_instance_max_depth, LEAN_DEFAULT_CLASS_INSTANCE_MAX_DEPTH,

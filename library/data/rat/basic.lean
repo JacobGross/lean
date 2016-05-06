@@ -39,8 +39,8 @@ have num b * denom a > 0, from H ▸ this,
 show num b > 0, from pos_of_mul_pos_right this (le_of_lt (denom_pos a))
 
 theorem num_neg_of_equiv {a b : prerat} (H : a ≡ b) (na_neg : num a < 0) : num b < 0 :=
-assert H₁ : num a * denom b = num b * denom a, from H,
-assert num a * denom b < 0,     from mul_neg_of_neg_of_pos na_neg (denom_pos b),
+have H₁ : num a * denom b = num b * denom a, from H,
+have num a * denom b < 0,     from mul_neg_of_neg_of_pos na_neg (denom_pos b),
 have -(-num b * denom a) < 0,   begin rewrite [neg_mul_eq_neg_mul, neg_neg, -H₁], exact this end,
 have -num b > 0, from pos_of_mul_pos_right (pos_of_neg_neg this) (le_of_lt (denom_pos a)),
 neg_of_neg_pos this
@@ -97,7 +97,7 @@ definition smul (a : ℤ) (b : prerat) (H : a > 0) : prerat :=
 prerat.mk (a * num b) (a * denom b) (mul_pos H (denom_pos b))
 
 theorem of_int_add (a b : ℤ) : of_int (a + b) ≡ add (of_int a) (of_int b) :=
-by esimp [equiv, num, denom, one, add, of_int]; rewrite [*int.mul_one]
+by esimp [equiv, one, add, of_int]; rewrite [*int.mul_one]
 
 theorem of_int_mul (a b : ℤ) : of_int (a * b) ≡ mul (of_int a) (of_int b) :=
 !equiv.refl
@@ -114,7 +114,7 @@ definition inv : prerat → prerat
 | inv (prerat.mk -[1+n] d dp)       := prerat.mk (-d) (nat.succ n) !of_nat_succ_pos
 
 theorem equiv_zero_of_num_eq_zero {a : prerat} (H : num a = 0) : a ≡ zero :=
-by rewrite [↑equiv, H, ↑zero, ↑num, ↑of_int, *zero_mul]
+by rewrite [↑equiv, H, ↑zero, ↑of_int, *zero_mul]
 
 theorem num_eq_zero_of_equiv_zero {a : prerat} : a ≡ zero → num a = 0 :=
 by rewrite [↑equiv, ↑zero, ↑of_int, mul_one, zero_mul]; intro H; exact H
@@ -256,7 +256,7 @@ theorem mul_inv_cancel : ∀{a : prerat}, ¬ a ≡ zero → mul a (inv a) ≡ on
       calc
         mul a (inv a) ≡ mul a ia : mul_equiv_mul !equiv.refl (inv_of_neg an_neg adp)
                   ... ≡ one      : begin
-                                     esimp [equiv, num, denom, one, mul, of_int],
+                                     esimp [equiv, one, mul, of_int],
                                      rewrite [*int.mul_one, *int.one_mul, mul.comm,
                                               neg_mul_comm]
                                    end)
@@ -266,7 +266,7 @@ theorem mul_inv_cancel : ∀{a : prerat}, ¬ a ≡ zero → mul a (inv a) ≡ on
       calc
         mul a (inv a) ≡ mul a ia : mul_equiv_mul !equiv.refl (inv_of_pos an_pos adp)
                   ... ≡ one      : begin
-                                     esimp [equiv, num, denom, one, mul, of_int],
+                                     esimp [equiv, one, mul, of_int],
                                      rewrite [*int.mul_one, *int.one_mul, mul.comm]
                                    end)
 
@@ -314,11 +314,11 @@ theorem reduce_eq_reduce : ∀ {a b : prerat}, a ≡ b → reduce a = reduce b
   decidable.by_cases
     (assume anz : an = 0,
       have H' : bn * ad = 0, by rewrite [-H, anz, zero_mul],
-      assert bnz : bn = 0,
+      have bnz : bn = 0,
         from or_resolve_left (eq_zero_or_eq_zero_of_mul_eq_zero H') (ne_of_gt adpos),
       by rewrite [↑reduce, if_pos anz, if_pos bnz])
     (assume annz : an ≠ 0,
-      assert bnnz : bn ≠ 0, from
+      have bnnz : bn ≠ 0, from
         assume bnz,
         have H' : an * bd = 0, by rewrite [H, bnz, zero_mul],
         have anz : an = 0,
@@ -353,15 +353,15 @@ namespace rat
 /- operations -/
 
 definition of_int [coercion] (i : ℤ) : ℚ := ⟦prerat.of_int i⟧
-definition of_nat [coercion] (n : ℕ) : ℚ := nat.to.rat n
-definition of_num [coercion] [reducible] (n : num) : ℚ := num.to.rat n
+definition of_nat [coercion] (n : ℕ) : ℚ := n
+definition of_num [coercion] [reducible] (n : num) : ℚ := n
 
 protected definition prio := num.pred int.prio
 
-definition rat_has_zero [reducible] [instance] [priority rat.prio] : has_zero rat :=
+definition rat_has_zero [instance] [priority rat.prio] : has_zero rat :=
 has_zero.mk (of_int 0)
 
-definition rat_has_one [reducible] [instance] [priority rat.prio] : has_one rat :=
+definition rat_has_one [instance] [priority rat.prio] : has_one rat :=
 has_one.mk (of_int 1)
 
 theorem of_int_zero : of_int (0:int) = (0:rat) :=
@@ -401,21 +401,21 @@ definition denom (a : ℚ) : ℤ := prerat.denom (reduce a)
 theorem denom_pos (a : ℚ): denom a > 0 :=
 prerat.denom_pos (reduce a)
 
-definition rat_has_add [reducible] [instance] [priority rat.prio] : has_add rat :=
+definition rat_has_add [instance] [priority rat.prio] : has_add rat :=
 has_add.mk rat.add
 
-definition rat_has_mul [reducible] [instance] [priority rat.prio] : has_mul rat :=
+definition rat_has_mul [instance] [priority rat.prio] : has_mul rat :=
 has_mul.mk rat.mul
 
-definition rat_has_neg [reducible] [instance] [priority rat.prio] : has_neg rat :=
+definition rat_has_neg [instance] [priority rat.prio] : has_neg rat :=
 has_neg.mk rat.neg
 
-definition rat_has_inv [reducible] [instance] [priority rat.prio] : has_inv rat :=
+definition rat_has_inv [instance] [priority rat.prio] : has_inv rat :=
 has_inv.mk rat.inv
 
 protected definition sub [reducible] (a b : ℚ) : rat := a + (-b)
 
-definition rat_has_sub [reducible] [instance] [priority rat.prio] : has_sub rat :=
+definition rat_has_sub [instance] [priority rat.prio] : has_sub rat :=
 has_sub.mk rat.sub
 
 lemma sub.def (a b : ℚ) : a - b = a + (-b) :=
@@ -541,7 +541,7 @@ decidable.by_cases
   (suppose a = 0, by substvars)
   (quot.induction_on a
     (take u H,
-      assert H' : prerat.num u ≠ 0, from take H'', H (quot.sound (prerat.equiv_zero_of_num_eq_zero H'')),
+      have H' : prerat.num u ≠ 0, from take H'', H (quot.sound (prerat.equiv_zero_of_num_eq_zero H'')),
       begin
         cases u with un ud udpos,
         rewrite [▸*, ↑num, ↑denom, ↑reduce, ↑prerat.reduce, if_neg H', ▸*],
@@ -550,7 +550,7 @@ decidable.by_cases
       end))
 
 
-protected definition discrete_field [reducible] [trans_instance] : discrete_field rat :=
+protected definition discrete_field [trans_instance] : discrete_field rat :=
 ⦃discrete_field,
  add              := rat.add,
  add_assoc        := rat.add_assoc,
@@ -574,10 +574,10 @@ protected definition discrete_field [reducible] [trans_instance] : discrete_fiel
  inv_zero         := rat.inv_zero,
  has_decidable_eq := has_decidable_eq⦄
 
-definition rat_has_div [instance] [reducible] [priority rat.prio] : has_div rat :=
+definition rat_has_div [instance] [priority rat.prio] : has_div rat :=
 has_div.mk has_div.div
 
-definition rat_has_pow_nat [instance] [reducible] [priority rat.prio] : has_pow_nat rat :=
+definition rat_has_pow_nat [instance] [priority rat.prio] : has_pow_nat rat :=
 has_pow_nat.mk has_pow_nat.pow_nat
 
 theorem eq_num_div_denom (a : ℚ) : a = num a / denom a :=
@@ -598,7 +598,7 @@ decidable.by_cases
 
 theorem of_nat_div {a b : ℕ} (H : b ∣ a) : of_nat (a / b) = of_nat a / of_nat b :=
 have H' : (int.of_nat b ∣ int.of_nat a), by rewrite [int.of_nat_dvd_of_nat_iff]; exact H,
-by+ rewrite [of_nat_eq, int.of_nat_div, of_int_div H']
+by rewrite [of_nat_eq, int.of_nat_div, of_int_div H']
 
 theorem of_int_pow (a : ℤ) (n : ℕ) : of_int (a^n) = (of_int a)^n :=
 begin

@@ -116,10 +116,10 @@ theorem head_map (s : stream A) : head (map f s) = f (head s) :=
 rfl
 
 theorem map_eq (s : stream A) : map f s = f (head s) :: map f (tail s) :=
-by rewrite [-stream.eta, tail_map, head_map]
+by rewrite [-stream.eta (map f s), tail_map, head_map]
 
 theorem map_cons (a : A) (s : stream A) : map f (a :: s) = f a :: map f s :=
-by rewrite [-stream.eta, map_eq]
+by rewrite [-stream.eta (map f (a :: s)), map_eq]
 
 theorem map_id (s : stream A) : map id s = s :=
 rfl
@@ -151,7 +151,7 @@ theorem tail_zip (s₁ : stream A) (s₂ : stream B) : tail (zip f s₁ s₂) = 
 rfl
 
 theorem zip_eq (s₁ : stream A) (s₂ : stream B) : zip f s₁ s₂ = f (head s₁) (head s₂) :: zip f (tail s₁) (tail s₂) :=
-by rewrite [-stream.eta]
+by rewrite [-stream.eta (zip f s₁ s₂)]
 end zip
 
 definition const (a : A) : stream A :=
@@ -196,7 +196,7 @@ end
 
 theorem iterate_eq (f : A → A) (a : A) : iterate f a = a :: iterate f (f a) :=
 begin
-  rewrite [-stream.eta], congruence, exact !tail_iterate
+  rewrite [-stream.eta (iterate f a)], congruence, exact !tail_iterate
 end
 
 theorem nth_zero_iterate (f : A → A) (a : A) : nth 0 (iterate f a) = a :=
@@ -595,7 +595,7 @@ infix `⊛`:75 := apply  -- input as \o*
 
 theorem identity (s : stream A) : pure id ⊛ s = s :=
 rfl
-theorem composition (g : stream (B → C)) (f : stream (A → B)) (s : stream A) : pure compose ⊛ g ⊛ f ⊛ s = g ⊛ (f ⊛ s) :=
+theorem composition (g : stream (B → C)) (f : stream (A → B)) (s : stream A) : pure comp ⊛ g ⊛ f ⊛ s = g ⊛ (f ⊛ s) :=
 rfl
 theorem homomorphism (f : A → B) (a : A) : pure f ⊛ pure a = pure (f a) :=
 rfl
@@ -634,7 +634,7 @@ obtain (i₁ : nat) hlt₁ he₁, from h₁,
 obtain (i₂ : nat) hlt₂ he₂, from h₂,
 lt.by_cases
   (λ i₁lti₂ : i₁ < i₂,
-    assert aux : nth i₁ s₂ = nth i₁ s₃, from he₂ _ i₁lti₂,
+    have aux : nth i₁ s₂ = nth i₁ s₃, from he₂ _ i₁lti₂,
     begin
       existsi i₁, split,
        {rewrite -aux, exact hlt₁},
@@ -650,7 +650,7 @@ lt.by_cases
           exact !he₂ jlti₁
     end)
   (λ i₂lti₁ : i₂ < i₁,
-    assert nth i₂ s₁ = nth i₂ s₂, from he₁ _ i₂lti₁,
+    have nth i₂ s₁ = nth i₂ s₂, from he₁ _ i₂lti₁,
     begin
       existsi i₂, split,
        {rewrite this, exact hlt₂},

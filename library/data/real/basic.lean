@@ -102,7 +102,7 @@ end
 private theorem ineq_helper (a b : ℚ) (k m n : ℕ+) (H : a ≤ (k * 2 * m)⁻¹ + (k * 2 * n)⁻¹)
                     (H2 : b ≤ (k * 2 * m)⁻¹ + (k * 2 * n)⁻¹) :
         (rat_of_pnat k) * a + b * (rat_of_pnat k) ≤ m⁻¹ + n⁻¹ :=
-assert H3 : (k * 2 * m)⁻¹ + (k * 2 * n)⁻¹ = (2 * k)⁻¹ * (m⁻¹ + n⁻¹),
+have H3 : (k * 2 * m)⁻¹ + (k * 2 * n)⁻¹ = (2 * k)⁻¹ * (m⁻¹ + n⁻¹),
   begin
     rewrite [left_distrib, *pnat.inv_mul_eq_mul_inv],
     rewrite (mul.comm k⁻¹)
@@ -304,15 +304,15 @@ definition K₂ (s t : seq) := max (K s) (K t)
 
 private theorem K₂_symm (s t : seq) : K₂ s t = K₂ t s :=
   if H : K s < K t then
-    (assert H1 : K₂ s t = K t, from pnat.max_eq_right H,
-     assert H2 : K₂ t s = K t, from pnat.max_eq_left (pnat.not_lt_of_ge (pnat.le_of_lt H)),
+    (have H1 : K₂ s t = K t, from pnat.max_eq_right H,
+     have H2 : K₂ t s = K t, from pnat.max_eq_left (pnat.not_lt_of_ge (pnat.le_of_lt H)),
      by rewrite [H1, -H2])
   else
-    (assert H1 : K₂ s t = K s, from pnat.max_eq_left H,
+    (have H1 : K₂ s t = K s, from pnat.max_eq_left H,
       if J : K t < K s then
-        (assert H2 : K₂ t s = K s, from pnat.max_eq_right J, by rewrite [H1, -H2])
+        (have H2 : K₂ t s = K s, from pnat.max_eq_right J, by rewrite [H1, -H2])
       else
-        (assert Heq : K t = K s, from
+        (have Heq : K t = K s, from
           pnat.eq_of_le_of_ge (pnat.le_of_not_gt H) (pnat.le_of_not_gt J),
         by rewrite [↑K₂, Heq]))
 
@@ -758,8 +758,8 @@ theorem mul_neg_equiv_neg_mul {s t : seq} : smul s (sneg t) ≡ sneg (smul s t) 
   begin
     rewrite [↑equiv, ↑smul],
     intros,
-    rewrite [↑sneg, *sub_neg_eq_add, -neg_mul_eq_mul_neg, add.comm, *sneg_def,
-             *neg_bound2_eq_bound2, add.right_inv, abs_zero],
+    rewrite [↑sneg, *sub_neg_eq_add, -neg_mul_eq_mul_neg, add.comm],
+    rewrite [*sneg_def t, *neg_bound2_eq_bound2, add.right_inv, abs_zero],
     apply add_invs_nonneg
   end
 
@@ -1075,32 +1075,32 @@ protected definition neg (x : ℝ) : ℝ :=
                                    quot.sound (rneg_well_defined Hab)))
 --prefix [priority real.prio] `-` := neg
 
-definition real_has_add [reducible] [instance] [priority real.prio] : has_add real :=
+definition real_has_add [instance] [priority real.prio] : has_add real :=
 has_add.mk real.add
 
-definition real_has_mul [reducible] [instance] [priority real.prio] : has_mul real :=
+definition real_has_mul [instance] [priority real.prio] : has_mul real :=
 has_mul.mk real.mul
 
-definition real_has_neg [reducible] [instance] [priority real.prio] : has_neg real :=
+definition real_has_neg [instance] [priority real.prio] : has_neg real :=
 has_neg.mk real.neg
 
 protected definition sub [reducible] (a b : ℝ) : real := a + (-b)
 
-definition real_has_sub [reducible] [instance] [priority real.prio] : has_sub real :=
+definition real_has_sub [instance] [priority real.prio] : has_sub real :=
 has_sub.mk real.sub
 
 open rat -- no coercions before
 
 definition of_rat [coercion] (a : ℚ) : ℝ := quot.mk (r_const a)
-definition of_int [coercion] (i : ℤ) : ℝ := int.to.real i
-definition of_nat [coercion] (n : ℕ) : ℝ := nat.to.real n
+definition of_int [coercion] (i : ℤ) : ℝ := i
+definition of_nat [coercion] (n : ℕ) : ℝ := n
 definition of_num [coercion] [reducible] (n : num) : ℝ := of_rat (rat.of_num n)
 
-definition real_has_zero [reducible] [instance] [priority real.prio] : has_zero real :=
-has_zero.mk (of_rat 0)
+definition real_has_zero [reducible] : has_zero real := has_zero.mk (of_rat 0)
+local attribute real_has_zero [instance] [priority real.prio]
 
-definition real_has_one [reducible] [instance] [priority real.prio] : has_one real :=
-has_one.mk (of_rat 1)
+definition real_has_one [reducible] : has_one real := has_one.mk (of_rat 1)
+local attribute real_has_one [instance] [priority real.prio]
 
 theorem real_zero_eq_rat_zero : (0:real) = of_rat (0:rat) :=
 rfl
@@ -1148,17 +1148,17 @@ protected theorem zero_ne_one : ¬ (0 : ℝ) = 1 :=
 protected definition comm_ring [reducible] : comm_ring ℝ :=
   begin
     fapply comm_ring.mk,
-    exact add,
+    exact real.add,
     exact real.add_assoc,
-    exact of_num 0,
+    exact 0,
     exact real.zero_add,
     exact real.add_zero,
-    exact neg,
+    exact real.neg,
     exact real.neg_cancel,
     exact real.add_comm,
-    exact mul,
+    exact real.mul,
     exact real.mul_assoc,
-    apply of_num 1,
+    apply 1,
     apply real.one_mul,
     apply real.mul_one,
     apply real.left_distrib,
@@ -1205,6 +1205,10 @@ theorem of_rat_neg (a : ℚ) : of_rat (-a) = -of_rat a :=
 
 theorem of_rat_mul (a b : ℚ) : of_rat (a * b) = of_rat a * of_rat b :=
   quot.sound (r_mul_consts a b)
+
+theorem of_rat_zero : of_rat 0 = 0 := rfl
+
+theorem of_rat_one : of_rat 1 = 1 := rfl
 
 open int
 

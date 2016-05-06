@@ -152,11 +152,14 @@ namespace bool
 
   definition eq_bnot_ne_idp : eq_bnot ≠ idp :=
   assume H : eq_bnot = idp,
-  assert H2 : bnot = id, from !cast_ua_fn⁻¹ ⬝ ap cast H,
+  have H2 : bnot = id, from !cast_ua_fn⁻¹ ⬝ ap cast H,
   absurd (ap10 H2 tt) ff_ne_tt
 
+  theorem is_set_bool : is_set bool := _
+  theorem not_is_prop_bool_eq_bool : ¬ is_prop (bool = bool) :=
+  λ H, eq_bnot_ne_idp !is_prop.elim
 
-  definition bool_equiv_option_unit : bool ≃ option unit :=
+  definition bool_equiv_option_unit [constructor] : bool ≃ option unit :=
   begin
     fapply equiv.MK,
     { intro b, cases b, exact none, exact some star},
@@ -165,6 +168,6 @@ namespace bool
     { intro b, cases b, reflexivity, reflexivity},
   end
 
-  definition tbool [constructor] : hset := trunctype.mk bool _
+  definition tbool [constructor] : Set := trunctype.mk bool _
 
 end bool

@@ -6,6 +6,7 @@ Author: Leonardo de Moura
 */
 #include <iostream>
 #include <algorithm>
+#include "util/fresh_name.h"
 #include "util/sstream.h"
 #include "util/timeit.h"
 #include "kernel/type_checker.h"
@@ -22,7 +23,7 @@ Author: Leonardo de Moura
 #include "library/explicit.h"
 #include "library/abbreviation.h"
 #include "library/definitional/equations.h"
-#include "library/error_handling/error_handling.h"
+#include "library/error_handling.h"
 #include "frontends/lean/parser.h"
 #include "frontends/lean/util.h"
 #include "frontends/lean/tokens.h"
@@ -139,7 +140,7 @@ static environment declare_var(parser & p, environment env,
         if (p.get_local(n))
             throw parser_error(sstream() << "invalid parameter/variable declaration, '"
                                << n << "' has already been declared", pos);
-        name u = p.mk_fresh_name();
+        name u = mk_fresh_name();
         expr l = p.save_pos(mk_local(u, n, type, bi), pos);
         if (k == variable_kind::Parameter)
             p.add_parameter(n, l);
@@ -604,7 +605,7 @@ expr parse_equations(parser & p, name const & n, expr const & type, buffer<name>
         for (expr const & param : ps)
             p.add_local(param);
         lean_assert(is_curr_with_or_comma_or_bar(p));
-        fns.push_back(mk_local(n, type));
+        fns.push_back(mk_local(n, type, mk_rec_info(true)));
         if (p.curr_is_token(get_with_tk())) {
             while (p.curr_is_token(get_with_tk())) {
                 p.next();
@@ -612,7 +613,7 @@ expr parse_equations(parser & p, name const & n, expr const & type, buffer<name>
                 name g_name = p.check_decl_id_next("invalid declaration, identifier expected");
                 p.check_token_next(get_colon_tk(), "invalid declaration, ':' expected");
                 expr g_type = p.parse_expr();
-                expr g      = p.save_pos(mk_local(g_name, g_type), pos);
+                expr g      = p.save_pos(mk_local(g_name, g_type, mk_rec_info(true)), pos);
                 auxs.push_back(g_name);
                 fns.push_back(g);
             }
@@ -661,7 +662,7 @@ expr parse_match(parser & p, unsigned, expr const *, pos_info const & pos) {
     try {
         t  = p.parse_expr();
         p.check_token_next(get_with_tk(), "invalid 'match' expression, 'with' expected");
-        expr fn = mk_local(p.mk_fresh_name(), *g_match_name, mk_expr_placeholder(), binder_info());
+        expr fn = mk_local(mk_fresh_name(), *g_match_name, mk_expr_placeholder(), binder_info());
         if (p.curr_is_token(get_end_tk())) {
             p.next();
             // empty match-with
@@ -879,7 +880,7 @@ class definition_cmd_fn {
             std::ostringstream msg;
             display_pos(msg);
             msg << " type checking time for " << m_name;
-            timeit timer(m_p.diagnostic_stream().get_stream(), msg.str().c_str(), LEAN_PROFILE_THRESHOLD);
+            timeit timer(m_p.ios().get_diagnostic_stream(), msg.str().c_str(), LEAN_PROFILE_THRESHOLD);
             return ::lean::check(m_env, d);
         } else {
             return ::lean::check(m_env, d);
@@ -1035,7 +1036,7 @@ class definition_cmd_fn {
             std::ostringstream msg;
             display_pos(msg);
             msg << " type elaboration time for " << m_name;
-            timeit timer(m_p.diagnostic_stream().get_stream(), msg.str().c_str(), LEAN_PROFILE_THRESHOLD);
+            timeit timer(m_p.ios().get_diagnostic_stream(), msg.str().c_str(), LEAN_PROFILE_THRESHOLD);
             return m_p.elaborate_type(e, list<expr>(), clear_pre_info);
         } else {
             return m_p.elaborate_type(e, list<expr>(), clear_pre_info);
@@ -1048,7 +1049,7 @@ class definition_cmd_fn {
             std::ostringstream msg;
             display_pos(msg);
             msg << " elaboration time for " << m_name;
-            timeit timer(m_p.diagnostic_stream().get_stream(), msg.str().c_str(), LEAN_PROFILE_THRESHOLD);
+            timeit timer(m_p.ios().get_diagnostic_stream(), msg.str().c_str(), LEAN_PROFILE_THRESHOLD);
             return m_p.elaborate_definition(def_name, type, value);
         } else {
             return m_p.elaborate_definition(def_name, type, value);

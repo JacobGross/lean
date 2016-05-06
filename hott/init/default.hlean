@@ -10,7 +10,7 @@ import init.bool init.num init.relation init.wf
 import init.types init.connectives
 import init.trunc init.path init.equiv init.util
 import init.ua init.funext
-import init.hedberg init.nat init.hit init.pathover
+import init.hedberg init.nat init.hit init.pathover init.pointed
 
 namespace core
   export bool unit
@@ -19,9 +19,9 @@ namespace core
   export sigma (hiding pr1 pr2)
   export [notation] prod
   export [notation] nat
-  export eq (idp idpath concat inverse transport ap ap10 cast tr_inv homotopy ap11 apd refl)
+  export eq (idp idpath concat inverse transport ap ap10 cast tr_inv homotopy ap11 apdt refl)
   export [declaration] function
   export equiv (to_inv to_right_inv to_left_inv)
   export is_equiv (inv right_inv left_inv adjointify)
-  export [abbreviation] [declaration] is_trunc (trunctype hprop.mk hset.mk)
+  export [abbreviation] is_trunc
 end core

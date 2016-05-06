@@ -54,7 +54,7 @@ dmap_nodup_of_dinj (dinj_lt n) (list.nodup_upto n)
 lemma mem_upto (n : nat) : ∀ (i : fin n), i ∈ upto n :=
 take i, fin.destruct i
   (take ival Piltn,
-    assert ival ∈ list.upto n, from mem_upto_of_lt Piltn,
+    have ival ∈ list.upto n, from mem_upto_of_lt Piltn,
     mem_dmap Piltn this)
 
 lemma upto_zero : upto 0 = [] :=
@@ -67,6 +67,14 @@ lemma length_upto (n : nat) : length (upto n) = n :=
 calc
   length (upto n) = length (list.upto n) : (map_val_upto n ▸ length_map fin.val (upto n))⁻¹
               ... = n                    : list.length_upto n
+
+lemma upto_ne_nil_of_ne_zero (n : nat) (Hn : n ≠ 0) : upto n ≠ [] :=
+begin
+  intro Hup,
+  apply Hn,
+  rewrite [-(@length_nil (fin n)), -Hup],
+  apply eq.symm !length_upto
+end
 
 definition is_fintype [instance] (n : nat) : fintype (fin n) :=
 fintype.mk (upto n) (nodup_upto n) (mem_upto n)
@@ -88,7 +96,7 @@ end pigeonhole
 protected definition zero (n : nat) : fin (succ n) :=
 mk 0 !zero_lt_succ
 
-definition fin_has_zero [instance] [reducible] (n : nat) : has_zero (fin (succ n)) :=
+definition fin_has_zero [instance] (n : nat) : has_zero (fin (succ n)) :=
 has_zero.mk (fin.zero n)
 
 theorem val_zero (n : nat) : val (0 : fin (succ n)) = 0 := rfl
@@ -138,7 +146,7 @@ by intro hlt he; substvars; exact absurd hlt (lt.irrefl n)
 
 lemma lt_max_of_ne_max {i : fin (succ n)} : i ≠ maxi → i < n :=
 assume hne  : i ≠ maxi,
-assert vne  : val i ≠ n, from
+have vne  : val i ≠ n, from
   assume he,
     have val (@maxi n) = n,   from rfl,
     have val i = val (@maxi n), from he ⬝ this⁻¹,
@@ -160,7 +168,7 @@ take i j, destruct i (destruct j (take iv ilt jv jlt Pmkeq,
 lemma lt_of_inj_of_max (f : fin (succ n) → fin (succ n)) :
   injective f → (f maxi = maxi) → ∀ i : fin (succ n), i < n → f i < n :=
 assume Pinj Peq, take i, assume Pilt,
-assert P1 : f i = f maxi → i = maxi, from assume Peq, Pinj i maxi Peq,
+have P1 : f i = f maxi → i = maxi, from assume Peq, Pinj i maxi Peq,
 have f i ≠ maxi, from
      begin rewrite -Peq, intro P2, apply absurd (P1 P2) (ne_max_of_lt_max Pilt) end,
 lt_max_of_ne_max this
@@ -188,7 +196,7 @@ end
 
 lemma lift_fun_of_inj {f : fin n → fin n} : injective f → injective (lift_fun f) :=
 assume Pinj, take i j,
-assert Pdi : decidable (i = maxi), from _, assert Pdj : decidable (j = maxi), from _,
+have Pdi : decidable (i = maxi), from _, have Pdj : decidable (j = maxi), from _,
 begin
   cases Pdi with Pimax Pinmax,
     cases Pdj with Pjmax Pjnmax,
@@ -205,7 +213,7 @@ end
 
 lemma lift_fun_inj : injective (@lift_fun n) :=
 take f₁ f₂ Peq, funext (λ i,
-assert lift_fun f₁ (lift_succ i) = lift_fun f₂ (lift_succ i), from congr_fun Peq _,
+have lift_fun f₁ (lift_succ i) = lift_fun f₂ (lift_succ i), from congr_fun Peq _,
 begin revert this, rewrite [*lift_fun_eq], apply lift_succ_inj end)
 
 lemma lower_inj_apply {f Pinj Pmax} (i : fin n) :
@@ -299,7 +307,7 @@ begin
     let vj := nat.pred vk in
     have vk = vj+1, from
       eq.symm (succ_pred_of_pos HT),
-    assert vj < n, from
+    have vj < n, from
       lt_of_succ_lt_succ (eq.subst `vk = vj+1` pk),
     have succ (mk vj `vj < n`) = mk vk pk, from
       val_inj (eq.symm `vk = vj+1`),
@@ -388,6 +396,10 @@ definition fin_zero_equiv_empty : fin 0 ≃ empty :=
   right_inv := λ e : empty, empty.rec _ e
 ⦄
 
+theorem false_of_fin_zero (x : fin 0) : false :=
+  have t : empty, from equiv.fn (fin.fin_zero_equiv_empty) x,
+  empty.induction_on (λ c, false) t
+
 definition fin_one_equiv_unit : fin 1 ≃ unit :=
 ⦃ equiv,
   to_fun  := λ f : (fin 1), unit.star,
@@ -404,8 +416,17 @@ definition fin_one_equiv_unit : fin 1 ≃ unit :=
   end
 ⦄
 
+theorem fin_one_eq_zero (x : fin 1) : x = !fin.zero :=
+  begin
+    induction x with [xv, xlt],
+    unfold fin.zero,
+    congruence,
+    apply eq_zero_of_le_zero,
+    apply le_of_lt_succ xlt
+  end
+
 definition fin_sum_equiv (n m : nat) : (fin n + fin m) ≃ fin (n+m) :=
-assert aux₁ : ∀ {v}, v < m → (v + n) < (n + m), from
+have aux₁ : ∀ {v}, v < m → (v + n) < (n + m), from
   take v, suppose v < m, calc
      v + n < m + n   : add_lt_add_of_lt_of_le this !le.refl
        ... = n + m   : add.comm,
@@ -425,7 +446,7 @@ assert aux₁ : ∀ {v}, v < m → (v + n) < (n + m), from
     { cases f₂ with v hlt, esimp,
       have ¬ v + n < n, from
         suppose v + n < n,
-        assert v < n - n, from nat.lt_sub_of_add_lt this !le.refl,
+        have v < n - n, from nat.lt_sub_of_add_lt this !le.refl,
         have v < 0, by rewrite [nat.sub_self at this]; exact this,
         absurd this !not_lt_zero,
       rewrite [dif_neg this], congruence, congruence, rewrite [nat.add_sub_cancel] }
@@ -439,17 +460,17 @@ assert aux₁ : ∀ {v}, v < m → (v + n) < (n + m), from
 
 definition fin_prod_equiv_of_pos (n m : nat) : n > 0 → (fin n × fin m) ≃ fin (n*m) :=
 suppose n > 0,
-assert aux₁ : ∀ {v₁ v₂}, v₁ < n → v₂ < m → v₁ + v₂ * n < n*m, from
+have aux₁ : ∀ {v₁ v₂}, v₁ < n → v₂ < m → v₁ + v₂ * n < n*m, from
   take v₁ v₂, assume h₁ h₂,
     have   nat.succ v₂ ≤ m, from succ_le_of_lt h₂,
-    assert nat.succ v₂ * n ≤ m * n,       from mul_le_mul_right _ this,
+    have nat.succ v₂ * n ≤ m * n,       from mul_le_mul_right _ this,
     have   v₂ * n + n ≤ n * m,            by rewrite [-add_one at this, right_distrib at this, one_mul at this, mul.comm m n at this]; exact this,
-    assert v₁ + (v₂ * n + n) < n + n * m, from add_lt_add_of_lt_of_le h₁ this,
+    have v₁ + (v₂ * n + n) < n + n * m, from add_lt_add_of_lt_of_le h₁ this,
     have   v₁ + v₂ * n + n < n * m + n,   by rewrite [add.assoc, add.comm (n*m) n]; exact this,
     lt_of_add_lt_add_right this,
-assert aux₂ : ∀ v, v % n < n, from
+have aux₂ : ∀ v, v % n < n, from
   take v, mod_lt _ `n > 0`,
-assert aux₃ : ∀ {v}, v < n * m → v / n < m, from
+have aux₃ : ∀ {v}, v < n * m → v / n < m, from
   take v, assume h, by rewrite mul.comm at h; exact nat.div_lt_of_lt_mul h,
 ⦃ equiv,
   to_fun   := λ p : (fin n × fin m), match p with (mk v₁ hlt₁, mk v₂ hlt₂) := mk (v₁ + v₂ * n) (aux₁ hlt₁ hlt₂) end,

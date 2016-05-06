@@ -42,11 +42,17 @@ struct elim_proj_mk : public replace_visitor {
     environment const & m_env;
     type_checker_ptr    m_tc;
 
-    virtual expr visit_binding(expr const & e) {
+    virtual expr visit_binding(expr const & e) override {
         // stop at binders
         return e;
     }
-    virtual expr visit_app(expr const & e) {
+
+    virtual expr visit_let(expr const & e) override {
+        // stop at binders
+        return e;
+    }
+
+    virtual expr visit_app(expr const & e) override {
         expr const & fn = get_app_fn(e);
         if (is_constant(fn) && is_projection(m_env, const_name(fn))) {
             expr new_e = m_tc->whnf(e).first;
@@ -57,7 +63,7 @@ struct elim_proj_mk : public replace_visitor {
     }
 
     elim_proj_mk(environment const & env):
-        m_env(env), m_tc(mk_opaque_type_checker(env, name_generator())) {}
+        m_env(env), m_tc(mk_opaque_type_checker(env)) {}
 };
 
 // Return true iff d is a declaration of the form (mk ... )
@@ -99,8 +105,7 @@ pair<environment, name> compose(environment const & env, type_checker & tc, name
     levels f_ls = param_names_to_levels(f_decl.get_univ_params());
     expr f_type = instantiate_type_univ_params(f_decl, f_ls);
     buffer<expr> f_domain;
-    name_generator ngen = tc.mk_ngen();
-    expr f_codomain     = to_telescope(ngen, f_type, f_domain);
+    expr f_codomain     = to_telescope(f_type, f_domain);
     buffer<expr> B_args;
     expr const & B = get_app_args(f_codomain, B_args);
     if (!is_constant(B))

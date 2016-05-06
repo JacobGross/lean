@@ -7,10 +7,10 @@ Partially ordered additive groups, modeled on Isabelle's library. These classes 
 if necessary.
 -/
 import logic.eq data.unit data.sigma data.prod
-import algebra.binary algebra.group algebra.order
+import algebra.binary algebra.group algebra.order algebra.monotone
 open eq eq.ops   -- note: ⁻¹ will be overloaded
 
-variable {A : Type}
+variables {A B : Type}
 
 /- partially ordered monoids, such as the natural numbers -/
 
@@ -22,9 +22,8 @@ structure ordered_cancel_comm_monoid [class] (A : Type) extends add_comm_monoid 
 (lt_of_add_lt_add_left : ∀a b c, lt (add a b) (add a c) → lt b c)
 
 section
-  variables [s : ordered_cancel_comm_monoid A]
+  variables [ordered_cancel_comm_monoid A]
   variables {a b c d e : A}
-  include s
 
   theorem add_lt_add_left (H : a < b) (c : A) : c + a < c + b :=
     !ordered_cancel_comm_monoid.add_lt_add_left H c
@@ -190,6 +189,58 @@ section
 
   theorem add_lt_of_lt_of_neg (Hbc : b < c) (Ha : a < 0) : b + a < c :=
   !add_zero ▸ add_lt_add Hbc Ha
+
+  theorem strictly_increasing_add_left (c : A) : strictly_increasing (λ x, x + c) :=
+  take x₁ x₂, assume H, add_lt_add_right H c
+
+  theorem strictly_increasing_add_right (c : A) : strictly_increasing (λ x, c + x) :=
+  take x₁ x₂, assume H, add_lt_add_left H c
+
+  theorem nondecreasing_add_left (c : A) : nondecreasing (λ x, x + c) :=
+  take x₁ x₂, assume H, add_le_add_right H c
+
+  theorem nondecreasing_add_right (c : A) : nondecreasing (λ x, c + x) :=
+  take x₁ x₂, assume H, add_le_add_left H c
+end
+
+/- ordered cancelative commutative monoids with a decidable linear order -/
+
+structure decidable_linear_ordered_cancel_comm_monoid [class] (A : Type)
+  extends ordered_cancel_comm_monoid A, decidable_linear_order A
+
+section
+  variables [decidable_linear_ordered_cancel_comm_monoid A]
+  variables {a b c d e : A}
+
+  theorem min_add_add_left : min (a + b) (a + c) = a + min b c :=
+  eq.symm (eq_min
+    (show a + min b c ≤ a + b, from add_le_add_left !min_le_left _)
+    (show a + min b c ≤ a + c, from add_le_add_left !min_le_right _)
+    (take d,
+      assume H₁ : d ≤ a + b,
+      assume H₂ : d ≤ a + c,
+      decidable.by_cases
+        (suppose b ≤ c, using this, by rewrite [min_eq_left this]; apply H₁)
+        (suppose ¬ b ≤ c, using this,
+          by rewrite [min_eq_right (le_of_lt (lt_of_not_ge this))]; apply H₂)))
+
+  theorem min_add_add_right : min (a + c) (b + c) = min a b + c :=
+  by rewrite [add.comm a c, add.comm b c, add.comm _ c]; apply min_add_add_left
+
+  theorem max_add_add_left : max (a + b) (a + c) = a + max b c :=
+  eq.symm (eq_max
+    (add_le_add_left !le_max_left _)
+    (add_le_add_left !le_max_right _)
+    (take d,
+      assume H₁ : a + b ≤ d,
+      assume H₂ : a + c ≤ d,
+      decidable.by_cases
+        (suppose b ≤ c, using this, by rewrite [max_eq_right this]; apply H₂)
+        (suppose ¬ b ≤ c, using this,
+          by rewrite [max_eq_left (le_of_lt (lt_of_not_ge this))]; apply H₁)))
+
+  theorem max_add_add_right : max (a + c) (b + c) = max a b + c :=
+  by rewrite [add.comm a c, add.comm b c, add.comm _ c]; apply max_add_add_left
 end
 
 /- partially ordered groups -/
@@ -200,16 +251,15 @@ structure ordered_comm_group [class] (A : Type) extends add_comm_group A, order_
 
 theorem ordered_comm_group.le_of_add_le_add_left [ordered_comm_group A] {a b c : A}
   (H : a + b ≤ a + c) : b ≤ c :=
-assert H' : -a + (a + b) ≤ -a + (a + c), from ordered_comm_group.add_le_add_left _ _ H _,
+have H' : -a + (a + b) ≤ -a + (a + c), from ordered_comm_group.add_le_add_left _ _ H _,
 by rewrite *neg_add_cancel_left at H'; exact H'
 
 theorem ordered_comm_group.lt_of_add_lt_add_left [ordered_comm_group A] {a b c : A}
   (H : a + b < a + c) : b < c :=
-assert H' : -a + (a + b) < -a + (a + c), from ordered_comm_group.add_lt_add_left _ _ H _,
+have H' : -a + (a + b) < -a + (a + c), from ordered_comm_group.add_lt_add_left _ _ H _,
 by rewrite *neg_add_cancel_left at H'; exact H'
 
-definition ordered_comm_group.to_ordered_cancel_comm_monoid [trans_instance] [reducible]
-    [s : ordered_comm_group A] : ordered_cancel_comm_monoid A :=
+definition ordered_comm_group.to_ordered_cancel_comm_monoid [trans_instance] [s : ordered_comm_group A] : ordered_cancel_comm_monoid A :=
 ⦃ ordered_cancel_comm_monoid, s,
   add_left_cancel       := @add.left_cancel A _,
   add_right_cancel      := @add.right_cancel A _,
@@ -217,8 +267,7 @@ definition ordered_comm_group.to_ordered_cancel_comm_monoid [trans_instance] [re
   lt_of_add_lt_add_left := @ordered_comm_group.lt_of_add_lt_add_left A _⦄
 
 section
-  variables [s : ordered_comm_group A] (a b c d e : A)
-  include s
+  variables [ordered_comm_group A] (a b c d e : A)
 
   theorem neg_le_neg {a b : A} (H : a ≤ b) : -b ≤ -a :=
   have H1 : 0 ≤ -a + b, from !add.left_inv ▸ !(add_le_add_left H),
@@ -346,7 +395,7 @@ section
     iff.mp !add_le_iff_le_sub_right
 
   theorem le_add_iff_neg_add_le : a ≤ b + c ↔ -b + a ≤ c :=
-  assert H: a ≤ b + c ↔ -b + a ≤ -b + (b + c), from iff.symm (!add_le_add_left_iff),
+  have H: a ≤ b + c ↔ -b + a ≤ -b + (b + c), from iff.symm (!add_le_add_left_iff),
   by rewrite neg_add_cancel_left at H; exact H
 
   theorem le_add_of_neg_add_le {a b c : A} : -b + a ≤ c → a ≤ b + c :=
@@ -365,7 +414,7 @@ section
     iff.mp !le_add_iff_sub_left_le
 
   theorem le_add_iff_sub_right_le : a ≤ b + c ↔ a - c ≤ b :=
-  assert H: a ≤ b + c ↔ a - c ≤ b + c - c, from iff.symm (!add_le_add_right_iff),
+  have H: a ≤ b + c ↔ a - c ≤ b + c - c, from iff.symm (!add_le_add_right_iff),
   by rewrite [sub_eq_add_neg (b+c) c at H, add_neg_cancel_right at H]; exact H
 
   theorem le_add_of_sub_right_le {a b c : A} : a - c ≤ b → a ≤ b + c :=
@@ -375,7 +424,7 @@ section
     iff.mp !le_add_iff_sub_right_le
 
   theorem le_add_iff_neg_add_le_left : a ≤ b + c ↔ -b + a ≤ c :=
-  assert H: a ≤ b + c ↔ -b + a ≤ -b + (b + c), from iff.symm (!add_le_add_left_iff),
+  have H: a ≤ b + c ↔ -b + a ≤ -b + (b + c), from iff.symm (!add_le_add_left_iff),
   by rewrite neg_add_cancel_left at H; exact H
 
   theorem le_add_of_neg_add_le_left {a b c : A} : -b + a ≤ c → a ≤ b + c :=
@@ -394,8 +443,8 @@ section
     iff.mp  !le_add_iff_neg_add_le_right
 
   theorem le_add_iff_neg_le_sub_left : c ≤ a + b ↔ -a ≤ b - c :=
-  assert H : c ≤ a + b ↔ -a + c ≤ b, from !le_add_iff_neg_add_le,
-  assert H' : -a + c ≤ b ↔ -a ≤ b - c, from !add_le_iff_le_sub_right,
+  have H : c ≤ a + b ↔ -a + c ≤ b, from !le_add_iff_neg_add_le,
+  have H' : -a + c ≤ b ↔ -a ≤ b - c, from !add_le_iff_le_sub_right,
   iff.trans H H'
 
   theorem le_add_of_neg_le_sub_left {a b c : A} : -a ≤ b - c → c ≤ a + b :=
@@ -414,7 +463,7 @@ section
     iff.mp !le_add_iff_neg_le_sub_right
 
   theorem add_lt_iff_lt_neg_add_left : a + b < c ↔ b < -a + c :=
-  assert H: a + b < c ↔ -a + (a + b) < -a + c, from iff.symm (!add_lt_add_left_iff),
+  have H: a + b < c ↔ -a + (a + b) < -a + c, from iff.symm (!add_lt_add_left_iff),
   begin rewrite neg_add_cancel_left at H, exact H end
 
   theorem add_lt_of_lt_neg_add_left {a b c : A} : b < -a + c → a + b < c :=
@@ -445,7 +494,7 @@ section
     iff.mp !add_lt_iff_lt_sub_left
 
   theorem add_lt_iff_lt_sub_right : a + b < c ↔ a < c - b :=
-  assert H: a + b < c ↔ a + b - b < c - b, from iff.symm (!add_lt_add_right_iff),
+  have H: a + b < c ↔ a + b - b < c - b, from iff.symm (!add_lt_add_right_iff),
   by rewrite [sub_eq_add_neg at H, add_neg_cancel_right at H]; exact H
 
   theorem add_lt_of_lt_sub_right {a b c : A} : a < c - b → a + b < c :=
@@ -455,7 +504,7 @@ section
     iff.mp !add_lt_iff_lt_sub_right
 
   theorem lt_add_iff_neg_add_lt_left : a < b + c ↔ -b + a < c :=
-  assert H: a < b + c ↔ -b + a < -b + (b + c), from iff.symm (!add_lt_add_left_iff),
+  have H: a < b + c ↔ -b + a < -b + (b + c), from iff.symm (!add_lt_add_left_iff),
   by rewrite neg_add_cancel_left at H; exact H
 
   theorem lt_add_of_neg_add_lt_left {a b c : A} : -b + a < c → a < b + c :=
@@ -563,13 +612,127 @@ section
   end
 
   theorem sub_le_of_nonneg {b : A} (H : b ≥ 0) : a - b ≤ a :=
-   add_le_of_le_of_nonpos (le.refl a) (neg_nonpos_of_nonneg H)
+  add_le_of_le_of_nonpos (le.refl a) (neg_nonpos_of_nonneg H)
 
   theorem sub_lt_of_pos {b : A} (H : b > 0) : a - b < a :=
-   add_lt_of_le_of_neg (le.refl a) (neg_neg_of_pos H)
+  add_lt_of_le_of_neg (le.refl a) (neg_neg_of_pos H)
 
   theorem neg_add_neg_le_neg_of_pos {a : A} (H : a > 0) : -a + -a ≤ -a :=
-    !neg_add ▸ neg_le_neg (le_add_of_nonneg_left (le_of_lt H))
+  !neg_add ▸ neg_le_neg (le_add_of_nonneg_left (le_of_lt H))
+
+  variable (A)
+  theorem strictly_decreasing_neg : strictly_decreasing (λ x : A, -x) :=
+  @neg_lt_neg A _
+
+  variable {A}
+
+  section
+    variable [strict_order B]
+
+    theorem strictly_decreasing_neg_of_strictly_increasing {f : B → A}
+      (H : strictly_increasing f) : strictly_decreasing (λ x, - f x) :=
+    strictly_decreasing_comp_dec_inc (strictly_decreasing_neg A) H
+
+    theorem strictly_increasing_neg_of_strictly_decreasing {f : B → A}
+      (H : strictly_decreasing f) : strictly_increasing (λ x, - f x) :=
+    strictly_increasing_comp_dec_dec (strictly_decreasing_neg A) H
+
+    theorem strictly_decreasing_of_strictly_increasing_neg {f : B → A}
+      (H : strictly_increasing (λ x, - f x)) : strictly_decreasing f :=
+    strictly_decreasing_of_strictly_increasing_comp_right (left_inverse_neg A)
+        (strictly_decreasing_neg A) H
+
+    theorem strictly_increasing_of_strictly_decreasing_neg {f : B → A}
+      (H : strictly_decreasing (λ x, - f x)) : strictly_increasing f :=
+    strictly_increasing_of_strictly_decreasing_comp_right (left_inverse_neg A)
+        (strictly_decreasing_neg A) H
+
+    theorem strictly_decreasing_neg_iff {f : B → A} :
+      strictly_decreasing (λ x, - f x) ↔ strictly_increasing f :=
+    iff.intro strictly_increasing_of_strictly_decreasing_neg
+       strictly_decreasing_neg_of_strictly_increasing
+
+    theorem strictly_increasing_neg_iff {f : B → A} :
+      strictly_increasing (λ x, - f x) ↔ strictly_decreasing f :=
+    iff.intro strictly_decreasing_of_strictly_increasing_neg
+       strictly_increasing_neg_of_strictly_decreasing
+
+    theorem strictly_decreasing_neg_of_strictly_increasing' {f : A → B}
+      (H : strictly_increasing f) : strictly_decreasing (λ x, f (-x)) :=
+    strictly_decreasing_comp_inc_dec H (strictly_decreasing_neg A)
+
+    theorem strictly_increasing_neg_of_strictly_decreasing' {f : A → B}
+      (H : strictly_decreasing f) : strictly_increasing (λ x, f (-x)) :=
+    strictly_increasing_comp_dec_dec H (strictly_decreasing_neg A)
+
+    theorem strictly_decreasing_of_strictly_increasing_neg' {f : A → B}
+      (H : strictly_increasing (λ x, f (-x))) : strictly_decreasing f :=
+    strictly_decreasing_of_strictly_increasing_comp_left (left_inverse_neg A)
+        (strictly_decreasing_neg A) H
+
+    theorem strictly_increasing_of_strictly_decreasing_neg' {f : A → B}
+      (H : strictly_decreasing (λ x, f (-x))) : strictly_increasing f :=
+    strictly_increasing_of_strictly_decreasing_comp_left (left_inverse_neg A)
+        (strictly_decreasing_neg A) H
+
+    theorem strictly_decreasing_neg_iff' {f : A → B} :
+      strictly_decreasing (λ x, f (-x)) ↔ strictly_increasing f :=
+    iff.intro strictly_increasing_of_strictly_decreasing_neg'
+       strictly_decreasing_neg_of_strictly_increasing'
+
+    theorem strictly_increasing_neg_iff' {f : A → B} :
+      strictly_increasing (λ x, f (-x)) ↔ strictly_decreasing f :=
+    iff.intro strictly_decreasing_of_strictly_increasing_neg'
+       strictly_increasing_neg_of_strictly_decreasing'
+  end
+
+  section
+    variable [weak_order B]
+
+    theorem nondecreasing_of_neg_nonincreasing {f : B → A} (H : nonincreasing (λ x, -f x)) :
+      nondecreasing f :=
+    take a₁ a₂, suppose a₁ ≤ a₂, le_of_neg_le_neg (H this)
+
+    theorem nonincreasing_neg {f : B → A} (H : nondecreasing f) : nonincreasing (λ x, -f x) :=
+    take a₁ a₂, suppose a₁ ≤ a₂, neg_le_neg (H this)
+
+    theorem nonincreasing_neg_iff (f : B → A) : nonincreasing (λ x, - f x) ↔ nondecreasing f :=
+    iff.intro nondecreasing_of_neg_nonincreasing nonincreasing_neg
+
+    theorem nonincreasing_of_neg_nondecreasing {f : B → A} (H : nondecreasing (λ x, -f x)) :
+      nonincreasing f :=
+    take a₁ a₂, suppose a₁ ≤ a₂, le_of_neg_le_neg (H this)
+
+    theorem nondecreasing_neg {f : B → A} (H : nonincreasing f) : nondecreasing (λ x, -f x) :=
+    take a₁ a₂, suppose a₁ ≤ a₂, neg_le_neg (H this)
+
+    theorem nondecreasing_neg_iff (f : B → A) : nondecreasing (λ x, - f x) ↔ nonincreasing f :=
+    iff.intro nonincreasing_of_neg_nondecreasing nondecreasing_neg
+
+    theorem nondecreasing_of_neg_nonincreasing' {f : A → B} (H : nonincreasing (λ x, f (-x))) :
+      nondecreasing f :=
+    take a₁ a₂, suppose a₁ ≤ a₂,
+    have f(-(-a₁)) ≤ f(-(-a₂)), from H (neg_le_neg this),
+    by rewrite *neg_neg at this; exact this
+
+    theorem nonincreasing_neg' {f : A → B} (H : nondecreasing f) : nonincreasing (λ x, f (-x)) :=
+    take a₁ a₂, suppose a₁ ≤ a₂, H (neg_le_neg this)
+
+    theorem nonincreasing_neg_iff' (f : A → B) : nonincreasing (λ x, f (- x)) ↔ nondecreasing f :=
+    iff.intro nondecreasing_of_neg_nonincreasing' nonincreasing_neg'
+
+    theorem nonincreasing_of_neg_nondecreasing' {f : A → B} (H : nondecreasing (λ x, f (-x))) :
+      nonincreasing f :=
+    take a₁ a₂, suppose a₁ ≤ a₂,
+    have f(-(-a₁)) ≥ f(-(-a₂)), from H (neg_le_neg this),
+    by rewrite *neg_neg at this; exact this
+
+    theorem nondecreasing_neg' {f : A → B} (H : nonincreasing f) : nondecreasing (λ x, f (-x)) :=
+    take a₁ a₂, suppose a₁ ≤ a₂, H (neg_le_neg this)
+
+    theorem nondecreasing_neg_iff' (f : A → B) : nondecreasing (λ x, f (- x)) ↔ nonincreasing f :=
+    iff.intro nonincreasing_of_neg_nondecreasing' nondecreasing_neg'
+  end
 end
 
 /- linear ordered group with decidable order -/
@@ -580,45 +743,23 @@ structure decidable_linear_ordered_comm_group [class] (A : Type)
     (add_lt_add_left : ∀ a b, lt a b → ∀ c, lt (add c a) (add c b))
 
 definition decidable_linear_ordered_comm_group.to_ordered_comm_group
-      [trans_instance] [reducible]
+      [trans_instance]
    (A : Type) [s : decidable_linear_ordered_comm_group A] : ordered_comm_group A :=
 ⦃ ordered_comm_group, s,
   le_of_lt := @le_of_lt A _,
   lt_of_le_of_lt := @lt_of_le_of_lt A _,
   lt_of_lt_of_le := @lt_of_lt_of_le A _ ⦄
 
+definition decidable_linear_ordered_comm_group.to_decidable_linear_ordered_cancel_comm_monoid
+    [trans_instance] (A : Type) [s : decidable_linear_ordered_comm_group A] :
+  decidable_linear_ordered_cancel_comm_monoid A :=
+⦃ decidable_linear_ordered_cancel_comm_monoid, s,
+    @ordered_comm_group.to_ordered_cancel_comm_monoid A _ ⦄
+
 section
   variables [s : decidable_linear_ordered_comm_group A]
   variables {a b c d e : A}
   include s
-
-  /- these can be generalized to a lattice ordered group -/
-
-  theorem min_add_add_left : min (a + b) (a + c) = a + min b c :=
-  eq.symm (eq_min
-    (show a + min b c ≤ a + b, from add_le_add_left !min_le_left _)
-    (show a + min b c ≤ a + c, from add_le_add_left !min_le_right _)
-    (take d,
-      assume H₁ : d ≤ a + b,
-      assume H₂ : d ≤ a + c,
-      have H : d - a ≤ min b c,
-        from le_min (iff.mp !le_add_iff_sub_left_le H₁) (iff.mp !le_add_iff_sub_left_le H₂),
-      show d ≤ a + min b c, from iff.mpr !le_add_iff_sub_left_le H))
-
-  theorem min_add_add_right : min (a + c) (b + c) = min a b + c :=
-  by rewrite [add.comm a c, add.comm b c, add.comm _ c]; apply min_add_add_left
-
-  theorem max_add_add_left : max (a + b) (a + c) = a + max b c :=
-  eq.symm (eq_max
-    (add_le_add_left !le_max_left _)
-    (add_le_add_left !le_max_right _)
-    (λ d H₁ H₂,
-      have H : max b c ≤ d - a,
-        from max_le (iff.mp !add_le_iff_le_sub_left H₁) (iff.mp !add_le_iff_le_sub_left H₂),
-      show a + max b c ≤ d, from iff.mpr !add_le_iff_le_sub_left H))
-
-  theorem max_add_add_right : max (a + c) (b + c) = max a b + c :=
-  by rewrite [add.comm a c, add.comm b c, add.comm _ c]; apply max_add_add_left
 
   theorem max_neg_neg : max (-a) (-b) = - min a b  :=
   eq.symm (eq_max
@@ -742,7 +883,7 @@ section
                 ... = abs a + b         : by rewrite (abs_of_nonneg H2)
                 ... = abs a + abs b     : by rewrite (abs_of_nonneg H3))
       (assume H3 : ¬ b ≥ 0,
-        assert H4 : b ≤ 0, from le_of_lt (lt_of_not_ge H3),
+        have H4 : b ≤ 0, from le_of_lt (lt_of_not_ge H3),
         calc
           abs (a + b) = a + b     : by rewrite (abs_of_nonneg H1)
               ... = abs a + b     : by rewrite (abs_of_nonneg H2)
@@ -773,8 +914,8 @@ section
     or.elim (le.total 0 (a + b))
       (assume H2 : 0 ≤ a + b, aux2 H2)
       (assume H2 : a + b ≤ 0,
-        assert H3 : -a + -b = -(a + b), by rewrite neg_add,
-        assert H4 : -(a + b) ≥ 0, from iff.mpr (neg_nonneg_iff_nonpos (a+b)) H2,
+        have H3 : -a + -b = -(a + b), by rewrite neg_add,
+        have H4 : -(a + b) ≥ 0, from iff.mpr (neg_nonneg_iff_nonpos (a+b)) H2,
         have H5   : -a + -b ≥ 0, begin rewrite -H3 at H4, exact H4 end,
         calc
           abs (a + b) = abs (-a + -b)   : by rewrite [-abs_neg, neg_add]

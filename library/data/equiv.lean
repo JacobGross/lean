@@ -32,10 +32,10 @@ definition inv {A B : Type} [e : equiv A B] : B → A :=
 
 lemma eq_of_to_fun_eq {A B : Type} : ∀ {e₁ e₂ : equiv A B}, fn e₁ = fn e₂ → e₁ = e₂
 | (mk f₁ g₁ l₁ r₁) (mk f₂ g₂ l₂ r₂) h :=
-  assert f₁ = f₂, from h,
-  assert g₁ = g₂, from funext (λ x,
-    assert f₁ (g₁ x) = f₂ (g₂ x), from eq.trans (r₁ x) (eq.symm (r₂ x)),
-    have f₁ (g₁ x) = f₁ (g₂ x),   by rewrite [-h at this]; exact this,
+  have f₁ = f₂, from h,
+  have g₁ = g₂, from funext (λ x,
+    have f₁ (g₁ x) = f₂ (g₂ x), from eq.trans (r₁ x) (eq.symm (r₂ x)),
+    have f₁ (g₁ x) = f₁ (g₂ x),   begin subst f₂, exact this end,
     show g₁ x = g₂ x,             from injective_of_left_inverse l₁ this),
   by congruence; repeat assumption
 
@@ -63,7 +63,7 @@ open equiv.ops
 lemma id_apply {A : Type} (x : A) : id ∙ x = x :=
 rfl
 
-lemma compose_apply {A B C : Type} (g : B ≃ C) (f : A ≃ B) (x : A) : (g ∘ f) ∙ x = g ∙ f ∙ x :=
+lemma comp_apply {A B C : Type} (g : B ≃ C) (f : A ≃ B) (x : A) : (g ∘ f) ∙ x = g ∙ f ∙ x :=
 begin cases g, cases f, esimp end
 
 lemma inverse_apply_apply {A B : Type} : ∀ (e : A ≃ B) (x : A), e⁻¹ ∙ e ∙ x = x
@@ -295,7 +295,7 @@ open decidable
 definition decidable_eq_of_equiv {A B : Type} [h : decidable_eq A] : A ≃ B → decidable_eq B
 | (mk f g l r) :=
   take b₁ b₂, match h (g b₁) (g b₂) with
-  | inl he := inl (assert aux : f (g b₁) = f (g b₂), from congr_arg f he,
+  | inl he := inl (have aux : f (g b₁) = f (g b₂), from congr_arg f he,
                    begin rewrite *r at aux, exact aux end)
   | inr hn := inr (λ b₁eqb₂, by subst b₁eqb₂; exact absurd rfl hn)
   end
@@ -330,7 +330,7 @@ by_cases
   (suppose r = a, by_cases
     (suppose r = b,   begin unfold swap_core, rewrite [if_pos `r = a`, if_pos (eq.refl b), -`r = a`, -`r = b`, if_pos (eq.refl r)] end)
     (suppose ¬ r = b,
-      assert b ≠ a, from assume h, begin rewrite h at this, contradiction end,
+      have b ≠ a, from assume h, begin rewrite h at this, contradiction end,
       begin unfold swap_core, rewrite [*if_pos `r = a`, if_pos (eq.refl b), if_neg `b ≠ a`, `r = a`] end))
   (suppose ¬ r = a, by_cases
     (suppose r = b,   begin unfold swap_core, rewrite [if_neg `¬ r = a`, *if_pos `r = b`, if_pos (eq.refl a), this] end)
@@ -379,7 +379,7 @@ assume h₁ h₂, by rewrite [swap_apply_def, if_neg h₁, if_neg h₂]
 lemma swap_swap (a b : A) : swap a b ∘ swap a b = id :=
 eq_of_to_fun_eq (funext (λ x, begin unfold [swap, fn, equiv.trans, equiv.refl], rewrite swap_core_swap_core end))
 
-lemma swap_compose_apply (a b : A) (π : perm A) (x : A) : (swap a b ∘ π) ∙ x = if π ∙ x = a then b else if π ∙ x = b then a else π ∙ x :=
+lemma swap_comp_apply (a b : A) (π : perm A) (x : A) : (swap a b ∘ π) ∙ x = if π ∙ x = a then b else if π ∙ x = b then a else π ∙ x :=
 begin cases π, reflexivity end
 
 end swap

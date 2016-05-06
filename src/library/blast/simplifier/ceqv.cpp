@@ -207,9 +207,9 @@ static bool is_permutation(expr const & lhs, expr const & rhs, unsigned offset, 
             return lhs == rhs; // locally bound variable
         } else if (var_idx(lhs) - offset < p.size()) {
             if (p[var_idx(lhs) - offset]) {
-                return *(p[var_idx(lhs) - offset]) == var_idx(rhs);
+                return *(p[var_idx(lhs) - offset]) == var_idx(rhs) - offset;
             } else {
-                p[var_idx(lhs) - offset] = var_idx(rhs);
+                p[var_idx(lhs) - offset] = var_idx(rhs) - offset;
                 return true;
             }
         } else {
@@ -219,6 +219,9 @@ static bool is_permutation(expr const & lhs, expr const & rhs, unsigned offset, 
         return
             is_permutation(binding_domain(lhs), binding_domain(rhs), offset, p) &&
             is_permutation(binding_body(lhs), binding_body(rhs), offset+1, p);
+    case expr_kind::Let:
+        // Let-expressions must be unfolded before invoking this method
+        lean_unreachable();
     case expr_kind::App:
         return
             is_permutation(app_fn(lhs), app_fn(rhs), offset, p) &&

@@ -12,7 +12,7 @@ open eq category is_trunc nat_trans iso is_equiv category.hom
 
 namespace functor
 
-  definition precategory_functor [instance] [reducible] [constructor] (D C : Precategory)
+  definition precategory_functor [instance] [constructor] (D C : Precategory)
     : precategory (functor C D) :=
   precategory.mk (λa b, nat_trans a b)
                  (λ a b c g f, nat_trans.compose g f)
@@ -47,7 +47,7 @@ namespace functor
     fapply (apd011 nat_trans.mk),
       apply eq_of_homotopy, intro c, apply left_inverse,
     apply eq_of_homotopy, intros, apply eq_of_homotopy, intros, apply eq_of_homotopy, intros,
-    apply is_hset.elim
+    apply is_set.elim
   end
 
   definition nat_trans_right_inverse : η ∘n nat_trans_inverse η = 1 :=
@@ -55,7 +55,7 @@ namespace functor
     fapply (apd011 nat_trans.mk),
       apply eq_of_homotopy, intro c, apply right_inverse,
     apply eq_of_homotopy, intros, apply eq_of_homotopy, intros, apply eq_of_homotopy, intros,
-    apply is_hset.elim
+    apply is_set.elim
   end
 
   definition is_natural_iso [constructor] : is_iso η :=
@@ -256,7 +256,7 @@ namespace functor
     definition eq_of_iso_ob (η : F ≅ G) (c : C) : F c = G c :=
     by apply eq_of_iso; apply componentwise_iso; exact η
 
-    local attribute functor.to_fun_hom [quasireducible]
+    local attribute functor.to_fun_hom [reducible]
     definition eq_of_iso (η : F ≅ G) : F = G :=
     begin
     fapply functor_eq,

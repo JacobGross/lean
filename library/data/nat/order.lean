@@ -90,7 +90,7 @@ protected theorem mul_lt_mul_of_pos_right {n m k : ℕ} (H : n < m) (Hk : k > 0)
 
 /- nat is an instance of a linearly ordered semiring and a lattice -/
 
-protected definition decidable_linear_ordered_semiring [reducible] [trans_instance] :
+protected definition decidable_linear_ordered_semiring [trans_instance] :
 decidable_linear_ordered_semiring nat :=
 ⦃ decidable_linear_ordered_semiring, nat.comm_semiring,
   add_left_cancel            := @nat.add_left_cancel,
@@ -117,7 +117,7 @@ decidable_linear_ordered_semiring nat :=
   mul_lt_mul_of_pos_right    := @nat.mul_lt_mul_of_pos_right,
   decidable_lt               := nat.decidable_lt ⦄
 
-definition nat_has_dvd [reducible] [instance] [priority nat.prio] : has_dvd nat :=
+definition nat_has_dvd [instance] [priority nat.prio] : has_dvd nat :=
 has_dvd.mk has_dvd.dvd
 
 theorem add_pos_left {a : ℕ} (H : 0 < a) (b : ℕ) : 0 < a + b :=
@@ -228,6 +228,52 @@ lt.base n
 lemma lt_succ_of_lt {i j : nat} : i < j → i < succ j :=
 assume Plt, lt.trans Plt (self_lt_succ j)
 
+/- increasing and decreasing functions -/
+
+section
+  variables {A : Type} [strict_order A] {f : ℕ → A}
+
+  theorem strictly_increasing_of_forall_lt_succ (H : ∀ i, f i < f (succ i)) : strictly_increasing f :=
+  take i j,
+  nat.induction_on j
+    (suppose i < 0, absurd this !not_lt_zero)
+    (take j', assume ih, suppose i < succ j',
+       or.elim (lt_or_eq_of_le (le_of_lt_succ this))
+         (suppose i < j', lt.trans (ih this) (H j'))
+         (suppose i = j', by rewrite this; apply H))
+
+  theorem strictly_decreasing_of_forall_gt_succ (H : ∀ i, f i > f (succ i)) : strictly_decreasing f :=
+  take i j,
+  nat.induction_on j
+    (suppose i < 0, absurd this !not_lt_zero)
+    (take j', assume ih, suppose i < succ j',
+       or.elim (lt_or_eq_of_le (le_of_lt_succ this))
+         (suppose i < j', lt.trans (H j') (ih this))
+         (suppose i = j', by rewrite this; apply H))
+end
+
+section
+  variables {A : Type} [weak_order A] {f : ℕ → A}
+
+  theorem nondecreasing_of_forall_le_succ (H : ∀ i, f i ≤ f (succ i)) : nondecreasing f :=
+  take i j,
+  nat.induction_on j
+    (suppose i ≤ 0, have i = 0, from eq_zero_of_le_zero this, by rewrite this; apply le.refl)
+    (take j', assume ih, suppose i ≤ succ j',
+       or.elim (le_or_eq_succ_of_le_succ this)
+         (suppose i ≤ j', le.trans (ih this) (H j'))
+         (suppose i = succ j', by rewrite this; apply le.refl))
+
+  theorem nonincreasing_of_forall_ge_succ (H : ∀ i, f i ≥ f (succ i)) : nonincreasing f :=
+  take i j,
+  nat.induction_on j
+    (suppose i ≤ 0, have i = 0, from eq_zero_of_le_zero this, by rewrite this; apply le.refl)
+    (take j', assume ih, suppose i ≤ succ j',
+       or.elim (le_or_eq_succ_of_le_succ this)
+         (suppose i ≤ j', le.trans (H j') (ih this))
+         (suppose i = succ j', by rewrite this; apply le.refl))
+end
+
 /- other forms of induction -/
 
 protected definition strong_rec_on {P : nat → Type} (n : ℕ) (H : ∀n, (∀m, m < n → P m) → P n) : P n :=
@@ -275,7 +321,7 @@ exists_eq_succ_of_lt H
 theorem pos_of_dvd_of_pos {m n : ℕ} (H1 : m ∣ n) (H2 : n > 0) : m > 0 :=
 pos_of_ne_zero
   (suppose m = 0,
-   assert  n = 0, from eq_zero_of_zero_dvd (this ▸ H1),
+   have  n = 0, from eq_zero_of_zero_dvd (this ▸ H1),
    ne_of_lt H2 (by subst n))
 
 /- multiplication -/
@@ -367,11 +413,11 @@ or.elim !lt_or_ge
 protected theorem min_add_add_left (a b c : ℕ) : min (a + b) (a + c) = a + min b c :=
 decidable.by_cases
   (suppose b ≤ c,
-   assert a + b ≤ a + c, from add_le_add_left this _,
+   have a + b ≤ a + c, from add_le_add_left this _,
    by rewrite [min_eq_left `b ≤ c`, min_eq_left this])
   (suppose ¬ b ≤ c,
-   assert c ≤ b,         from le_of_lt (lt_of_not_ge this),
-   assert a + c ≤ a + b, from add_le_add_left this _,
+   have c ≤ b,         from le_of_lt (lt_of_not_ge this),
+   have a + c ≤ a + b, from add_le_add_left this _,
    by rewrite [min_eq_right `c ≤ b`, min_eq_right this])
 
 protected theorem min_add_add_right (a b c : ℕ) : min (a + c) (b + c) = min a b + c :=
@@ -380,11 +426,11 @@ by rewrite [add.comm a c, add.comm b c, add.comm _ c]; apply nat.min_add_add_lef
 protected theorem max_add_add_left (a b c : ℕ) : max (a + b) (a + c) = a + max b c :=
 decidable.by_cases
   (suppose b ≤ c,
-   assert a + b ≤ a + c, from add_le_add_left this _,
+   have a + b ≤ a + c, from add_le_add_left this _,
    by rewrite [max_eq_right `b ≤ c`, max_eq_right this])
   (suppose ¬ b ≤ c,
-   assert c ≤ b,         from le_of_lt (lt_of_not_ge this),
-   assert a + c ≤ a + b, from add_le_add_left this _,
+   have c ≤ b,         from le_of_lt (lt_of_not_ge this),
+   have a + c ≤ a + b, from add_le_add_left this _,
    by rewrite [max_eq_left `c ≤ b`, max_eq_left this])
 
 protected theorem max_add_add_right (a b c : ℕ) : max (a + c) (b + c) = max a b + c :=
@@ -458,7 +504,6 @@ section least_and_greatest
       rewrite Heq at Hi,
       apply absurd (least_of_bound P Hi) Pnsm
     end
-
   theorem least_lt {n i : ℕ} (ltin : i < n) (Hi : P i) : least P n < n :=
     lt_of_le_of_lt (ge_least_of_lt P ltin Hi) ltin
 

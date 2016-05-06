@@ -13,60 +13,43 @@ Author: Leonardo de Moura
 #include "util/name.h"
 #include "util/sstream.h"
 #include "util/debug.h"
-#include "util/rc.h"
 #include "util/buffer.h"
 #include "util/memory_pool.h"
 #include "util/hash.h"
 #include "util/ascii.h"
 #include "util/utf8.h"
 #include "util/object_serializer.h"
-#include "util/lua_list.h"
 
 namespace lean {
 constexpr char const * anonymous_str = "[anonymous]";
-/** \brief Actual implementation of hierarchical names. */
-struct name::imp {
-    MK_LEAN_RC()
-    bool     m_is_string;
-    unsigned m_hash;
-    imp *    m_prefix;
-    union {
-        char * m_str;
-        unsigned m_k;
-    };
 
-    void dealloc();
-
-    imp(bool s, imp * p):m_rc(1), m_is_string(s), m_hash(0), m_prefix(p) { if (p) p->inc_ref(); }
-
-    static void display_core(std::ostream & out, imp * p, char const * sep) {
-        lean_assert(p != nullptr);
-        if (p->m_prefix) {
-            display_core(out, p->m_prefix, sep);
-            out << sep;
-        }
-        if (p->m_is_string)
-            out << p->m_str;
-        else
-            out << p->m_k;
+void name::imp::display_core(std::ostream & out, imp * p, char const * sep) {
+    lean_assert(p != nullptr);
+    if (p->m_prefix) {
+        display_core(out, p->m_prefix, sep);
+        out << sep;
     }
+    if (p->m_is_string)
+        out << p->m_str;
+    else
+        out << p->m_k;
+}
 
-    static void display(std::ostream & out, imp * p, char const * sep = lean_name_separator) {
-        if (p == nullptr)
-            out << anonymous_str;
-        else
-            display_core(out, p, sep);
-    }
+void name::imp::display(std::ostream & out, imp * p, char const * sep) {
+    if (p == nullptr)
+        out << anonymous_str;
+    else
+        display_core(out, p, sep);
+}
 
-    friend void copy_limbs(imp * p, buffer<name::imp *> & limbs) {
-        limbs.clear();
-        while (p != nullptr) {
-            limbs.push_back(p);
-            p = p->m_prefix;
-        }
-        std::reverse(limbs.begin(), limbs.end());
+void copy_limbs(name::imp * p, buffer<name::imp *> & limbs) {
+    limbs.clear();
+    while (p != nullptr) {
+        limbs.push_back(p);
+        p = p->m_prefix;
     }
-};
+    std::reverse(limbs.begin(), limbs.end());
+}
 
 DEF_THREAD_MEMORY_POOL(get_numeric_name_allocator, sizeof(name::imp));
 
@@ -127,15 +110,6 @@ name::name(char const * n):name(name(), n) {
 name::name(unsigned k):name(name(), k, true) {
 }
 
-name::name(name const & other):m_ptr(other.m_ptr) {
-    if (m_ptr)
-        m_ptr->inc_ref();
-}
-
-name::name(name && other):m_ptr(other.m_ptr) {
-    other.m_ptr = nullptr;
-}
-
 name::name(std::initializer_list<char const *> const & l):name() {
     if (l.size() == 0) {
         return;
@@ -146,11 +120,6 @@ name::name(std::initializer_list<char const *> const & l):name() {
         for (; it != l.end(); ++it)
             *this = name(*this, *it);
     }
-}
-
-name::~name() {
-    if (m_ptr)
-        m_ptr->dec_ref();
 }
 
 static name * g_anonymous = nullptr;
@@ -178,28 +147,13 @@ name_kind name::kind() const {
         return m_ptr->m_is_string ? name_kind::STRING : name_kind::NUMERAL;
 }
 
-unsigned name::get_numeral() const {
-    lean_assert(is_numeral());
-    return m_ptr->m_k;
-}
-
-char const * name::get_string() const {
-    lean_assert(is_string());
-    return m_ptr->m_str;
-}
-
-bool operator==(name const & a, name const & b) {
-    name::imp * i1 = a.m_ptr;
-    name::imp * i2 = b.m_ptr;
+/* Equality test core procedure, it is invoked by operator== */
+bool eq_core(name::imp * i1, name::imp * i2) {
     while (true) {
-        if (i1 == i2)
-            return true;
-        if ((i1 == nullptr) != (i2 == nullptr))
-            return false;
-        if (i1->m_hash != i2->m_hash)
-            return false;
         lean_assert(i1 != nullptr);
         lean_assert(i2 != nullptr);
+        lean_assert(i1 && i2);
+        lean_assert(i1->m_hash == i2->m_hash);
         if (i1->m_is_string != i2->m_is_string)
             return false;
         if (i1->m_is_string) {
@@ -211,6 +165,12 @@ bool operator==(name const & a, name const & b) {
         }
         i1 = i1->m_prefix;
         i2 = i2->m_prefix;
+        if (i1 == i2)
+            return true;
+        if ((i1 == nullptr) != (i2 == nullptr))
+            return false;
+        if (i1->m_hash != i2->m_hash)
+            return false;
     }
 }
 
@@ -275,14 +235,6 @@ int cmp(name::imp * i1, name::imp * i2) {
     else return it1 == limbs1.end() ? -1 : 1;
 }
 
-bool name::is_atomic() const {
-    return m_ptr == nullptr || m_ptr->m_prefix == nullptr;
-}
-
-name name::get_prefix() const {
-    return is_atomic() ? name() : name(m_ptr->m_prefix);
-}
-
 static unsigned num_digits(unsigned k) {
     if (k == 0)
         return 1;
@@ -324,10 +276,6 @@ size_t name::size() const {
 
 size_t name::utf8_size() const {
     return size_core(true);
-}
-
-unsigned name::hash() const {
-    return m_ptr ? m_ptr->m_hash : 11;
 }
 
 bool name::is_safe_ascii() const {
@@ -506,133 +454,6 @@ serializer & operator<<(serializer & s, name const & n) {
 
 name read_name(deserializer & d) {
     return d.get_extension<name_deserializer>(g_name_sd->m_deserializer_extid).read();
-}
-
-DECL_UDATA(name)
-
-static int mk_name(lua_State * L) {
-    int nargs = lua_gettop(L);
-    name r;
-    for (int i = 1; i <= nargs; i++) {
-        switch (lua_type(L, i)) {
-        case LUA_TNIL:      break; // skip
-        case LUA_TNUMBER:   r = name(r, lua_tointeger(L, i)); break;
-        case LUA_TSTRING:   r = name(r, lua_tostring(L, i)); break;
-        case LUA_TUSERDATA: r = r + to_name(L, i); break;
-        default:            throw exception(sstream() << "arg #" << i << " must be a hierarchical name, string, or integer");
-        }
-    }
-    return push_name(L, r);
-}
-
-name to_name_ext(lua_State * L, int idx) {
-    if (lua_isstring(L, idx)) {
-        return luaL_checkstring(L, idx);
-    } else if (lua_isnil(L, idx)) {
-        return name();
-    } else if (lua_istable(L, idx)) {
-        name r;
-        int n = objlen(L, idx);
-        for (int i = 1; i <= n; i++) {
-            lua_rawgeti(L, idx, i);
-            switch (lua_type(L, -1)) {
-            case LUA_TNIL:      break; // skip
-            case LUA_TNUMBER:   r = name(r, lua_tointeger(L, -1)); break;
-            case LUA_TSTRING:   r = name(r, lua_tostring(L, -1));  break;
-            case LUA_TUSERDATA: r = r + to_name(L, -1); break;
-            default:            throw exception("invalid array arguments, elements must be a hierarchical name, string, or integer");
-            }
-            lua_pop(L, 1);
-        }
-        return r;
-    } else {
-        return to_name(L, idx);
-    }
-}
-
-optional<name> to_optional_name(lua_State * L, int idx) {
-    if (lua_isnil(L, idx))
-        return optional<name>();
-    else
-        return optional<name>(to_name_ext(L, idx));
-}
-
-int push_optional_name(lua_State * L, optional<name> const & n) {
-    if (n)
-        return push_name(L, *n);
-    else
-        return push_nil(L);
-}
-
-static int name_tostring(lua_State * L) { return push_string(L, to_name(L, 1).to_string().c_str()); }
-static int name_eq(lua_State * L) { return push_boolean(L, to_name(L, 1) == to_name(L, 2)); }
-static int name_lt(lua_State * L) { return push_boolean(L, to_name(L, 1) < to_name(L, 2)); }
-static int name_hash(lua_State * L) { return push_integer(L, to_name(L, 1).hash()); }
-#define NAME_PRED(P) static int name_ ## P(lua_State * L) { check_num_args(L, 1); return push_boolean(L, to_name(L, 1).P()); }
-NAME_PRED(is_atomic)
-NAME_PRED(is_anonymous)
-NAME_PRED(is_string)
-NAME_PRED(is_numeral)
-
-static int name_get_prefix(lua_State * L) {
-    if (to_name(L, 1).is_atomic())
-        throw exception("invalid get_prefix, non-atomic name expected");
-    return push_name(L, to_name(L, 1).get_prefix());
-}
-
-static int name_get_numeral(lua_State * L) {
-    if (!to_name(L, 1).is_numeral())
-        throw exception("invalid get_numeral, hierarchical name with numeric head expected");
-    return push_integer(L, to_name(L, 1).get_numeral());
-}
-
-static int name_get_string(lua_State * L) {
-    if (!to_name(L, 1).is_string())
-        throw exception("invalid get_string,  hierarchical name with string head expected");
-    return push_string(L, to_name(L, 1).get_string());
-}
-
-static int name_append_before(lua_State * L) { return push_name(L, to_name(L, 1).append_before(lua_tostring(L, 2))); }
-static int name_append_after(lua_State * L) {
-    if (lua_isnumber(L, 2))
-        return push_name(L, to_name(L, 1).append_after(lua_tonumber(L, 2)));
-    else
-        return push_name(L, to_name(L, 1).append_after(lua_tostring(L, 2)));
-}
-
-static int name_replace_prefix(lua_State * L) { return push_name(L, to_name(L, 1).replace_prefix(to_name_ext(L, 2), to_name_ext(L, 3))); }
-
-static const struct luaL_Reg name_m[] = {
-    {"__gc",           name_gc}, // never throws
-    {"__tostring",     safe_function<name_tostring>},
-    {"__eq",           safe_function<name_eq>},
-    {"__lt",           safe_function<name_lt>},
-    {"is_atomic",      safe_function<name_is_atomic>},
-    {"is_anonymous",   safe_function<name_is_anonymous>},
-    {"is_numeral",     safe_function<name_is_numeral>},
-    {"is_string",      safe_function<name_is_string>},
-    {"get_prefix",     safe_function<name_get_prefix>},
-    {"get_numeral",    safe_function<name_get_numeral>},
-    {"get_string",     safe_function<name_get_string>},
-    {"hash",           safe_function<name_hash>},
-    {"append_before",  safe_function<name_append_before>},
-    {"append_after",   safe_function<name_append_after>},
-    {"replace_prefix", safe_function<name_replace_prefix>},
-    {0, 0}
-};
-
-DEFINE_LUA_LIST(name, push_name, to_name_ext)
-
-void open_name(lua_State * L) {
-    luaL_newmetatable(L, name_mt);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    setfuncs(L, name_m, 0);
-
-    SET_GLOBAL_FUN(mk_name,   "name");
-    SET_GLOBAL_FUN(name_pred, "is_name");
-
-    open_list_name(L);
 }
 
 void initialize_name() {

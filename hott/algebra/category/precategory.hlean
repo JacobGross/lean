@@ -5,7 +5,7 @@ Authors: Floris van Doorn
 -/
 import types.trunc types.pi arity
 
-open eq is_trunc pi equiv equiv.ops
+open eq is_trunc pi equiv
 
 namespace category
 
@@ -28,10 +28,9 @@ namespace category
     (id_left : Π ⦃a b : ob⦄ (f : hom a b), comp !ID f = f)
     (id_right : Π ⦃a b : ob⦄ (f : hom a b), comp f !ID = f)
     (id_id : Π (a : ob), comp !ID !ID = ID a)
-    (is_hset_hom : Π(a b : ob), is_hset (hom a b))
+    (is_set_hom : Π(a b : ob), is_set (hom a b))
 
-  -- attribute precategory [multiple-instances] --this is not used anywhere
-  attribute precategory.is_hset_hom [instance]
+  attribute precategory.is_set_hom [instance]
 
   infixr ∘ := precategory.comp
   -- input ⟶ using \--> (this is a different arrow than \-> (→))
@@ -48,21 +47,21 @@ namespace category
   abbreviation id_left     [unfold 2] := @precategory.id_left
   abbreviation id_right    [unfold 2] := @precategory.id_right
   abbreviation id_id       [unfold 2] := @precategory.id_id
-  abbreviation is_hset_hom [unfold 2] := @precategory.is_hset_hom
+  abbreviation is_set_hom [unfold 2] := @precategory.is_set_hom
 
-  definition is_hprop_hom_eq {ob : Type} [C : precategory ob] {x y : ob} (f g : x ⟶ y)
-    : is_hprop (f = g) :=
+  definition is_prop_hom_eq {ob : Type} [C : precategory ob] {x y : ob} (f g : x ⟶ y)
+    : is_prop (f = g) :=
   _
 
   -- the constructor you want to use in practice
   protected definition precategory.mk [constructor] {ob : Type} (hom : ob → ob → Type)
-    [hset : Π (a b : ob), is_hset (hom a b)]
+    [set : Π (a b : ob), is_set (hom a b)]
     (comp : Π ⦃a b c : ob⦄, hom b c → hom a b → hom a c) (ID : Π (a : ob), hom a a)
     (ass : Π ⦃a b c d : ob⦄ (h : hom c d) (g : hom b c) (f : hom a b),
        comp h (comp g f) = comp (comp h g) f)
     (idl : Π ⦃a b : ob⦄ (f : hom a b), comp (ID b) f = f)
     (idr : Π ⦃a b : ob⦄ (f : hom a b), comp f (ID a) = f) : precategory ob :=
-  precategory.mk' hom comp ID ass (λa b c d h g f, !ass⁻¹) idl idr (λa, !idl) hset
+  precategory.mk' hom comp ID ass (λa b c d h g f, !ass⁻¹) idl idr (λa, !idl) set
 
   section basic_lemmas
     variables {ob : Type} [C : precategory ob]
@@ -83,8 +82,8 @@ namespace category
     calc i = id ∘ i : by rewrite id_left
        ... = id     : by rewrite H
 
-    definition homset [reducible] [constructor] (x y : ob) : hset :=
-    hset.mk (hom x y) _
+    definition homset [reducible] [constructor] (x y : ob) : Set :=
+    Set.mk (hom x y) _
 
   end basic_lemmas
   section squares
@@ -152,7 +151,7 @@ namespace category
   attribute Precategory.carrier [coercion]
   attribute Precategory.struct [instance] [priority 10000] [coercion]
   -- definition precategory.carrier [coercion] [reducible] := Precategory.carrier
-  -- definition precategory.struct [instance] [coercion] [reducible] := Precategory.struct
+  -- definition precategory.struct [instance] [coercion] := Precategory.struct
   notation g ` ∘[`:60 C:0 `] `:0 f:60 :=
   @comp (Precategory.carrier C) (Precategory.struct C) _ _ _ g f
   -- TODO: make this left associative
@@ -173,13 +172,13 @@ namespace category
     esimp at *,
     revert q, eapply homotopy2.rec_on @p, esimp, clear p, intro p q, induction p,
     esimp at *,
-    assert H : comp1 = comp2,
-    { apply eq_of_homotopy3, intros, apply eq_of_homotopy2, intros, apply q},
+    have H : comp1 = comp2,
+    begin apply eq_of_homotopy3, intros, apply eq_of_homotopy2, intros, apply q end,
     induction H,
-    assert K : ID1 = ID2,
-    { apply eq_of_homotopy, intro a, exact !ir'⁻¹ ⬝ !il},
+    have K : ID1 = ID2,
+    begin apply eq_of_homotopy, intro a, exact !ir'⁻¹ ⬝ !il end,
     induction K,
-    apply ap0111111 (precategory.mk' hom1 comp1 ID1): apply is_hprop.elim
+    apply ap0111111 (precategory.mk' hom1 comp1 ID1): apply is_prop.elim
   end
 
 
@@ -197,21 +196,23 @@ namespace category
 /- if we need to prove properties about precategory_eq, it might be easier with the following proof:
   begin
     induction C with hom1 comp1 ID1, induction D with hom2 comp2 ID2, esimp at *,
-    assert H : Σ(s : hom1 = hom2), (λa b, equiv_of_eq (apd100 s a b)) = p,
-    { fconstructor,
+    have H : Σ(s : hom1 = hom2), (λa b, equiv_of_eq (apd100 s a b)) = p,
+    begin
+      fconstructor,
       { apply eq_of_homotopy2, intros, apply ua, apply p},
-      { apply eq_of_homotopy2, intros, rewrite [to_right_inv !eq_equiv_homotopy2, equiv_of_eq_ua]}},
+      { apply eq_of_homotopy2, intros, rewrite [to_right_inv !eq_equiv_homotopy2, equiv_of_eq_ua]}
+    end,
     induction H with H1 H2, induction H1, esimp at H2,
-    assert K : (λa b, equiv.refl) = p,
-    { refine _ ⬝ H2, apply eq_of_homotopy2, intros, exact !equiv_of_eq_refl⁻¹},
+    have K : (λa b, equiv.refl) = p,
+    begin refine _ ⬝ H2, apply eq_of_homotopy2, intros, exact !equiv_of_eq_refl⁻¹ end,
     induction K, clear H2,
     esimp at *,
-    assert H : comp1 = comp2,
-    { apply eq_of_homotopy3, intros, apply eq_of_homotopy2, intros, apply q},
-    assert K : ID1 = ID2,
-    { apply eq_of_homotopy, intros, apply r},
+    have H : comp1 = comp2,
+    begin apply eq_of_homotopy3, intros, apply eq_of_homotopy2, intros, apply q end,
+    have K : ID1 = ID2,
+    begin apply eq_of_homotopy, intros, apply r end,
     induction H, induction K,
-    apply ap0111111 (precategory.mk' hom1 comp1 ID1): apply is_hprop.elim
+    apply ap0111111 (precategory.mk' hom1 comp1 ID1): apply is_prop.elim
   end
 -/
 
@@ -246,7 +247,7 @@ namespace category
   definition Precategory_eq_hom [unfold 3] {C D : Precategory} (p : C = D) (a b : C)
     : hom a b = hom (cast (ap carrier p) a) (cast (ap carrier p) b) :=
   by induction p; reflexivity
-  --(ap10 (ap10 (apd (λx, @hom (carrier x) (Precategory.struct x)) p⁻¹ᵖ) a) b)⁻¹ᵖ ⬝ _
+  --(ap10 (ap10 (apdt (λx, @hom (carrier x) (Precategory.struct x)) p⁻¹ᵖ) a) b)⁻¹ᵖ ⬝ _
 
 
   -- beta/eta rules

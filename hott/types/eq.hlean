@@ -8,7 +8,7 @@ Theorems about path types (identity types)
 -/
 
 import types.sigma
-open eq sigma sigma.ops equiv is_equiv equiv.ops is_trunc
+open eq sigma sigma.ops equiv is_equiv is_trunc
 
 -- TODO: Rename transport_eq_... and pathover_eq_... to eq_transport_... and eq_pathover_...
 
@@ -151,7 +151,7 @@ namespace eq
 
   definition transport_eq_FlFr_D {B : A → Type} {f g : Πa, B a}
     (p : a₁ = a₂) (q : f a₁ = g a₁)
-      : transport (λx, f x = g x) p q = (apd f p)⁻¹ ⬝ ap (transport B p) q ⬝ (apd g p) :=
+      : transport (λx, f x = g x) p q = (apdt f p)⁻¹ ⬝ ap (transport B p) q ⬝ (apdt g p) :=
   by induction p; rewrite [▸*,idp_con,ap_id]
 
   definition transport_eq_FFlr (p : a₁ = a₂) (q : h (f a₁) = a₁)
@@ -189,7 +189,7 @@ namespace eq
   by induction p; rewrite [▸*,idp_con]; exact idpo
 
   definition pathover_eq_FlFr_D {B : A → Type} {f g : Πa, B a} (p : a₁ = a₂) (q : f a₁ = g a₁)
-    : q =[p] (apd f p)⁻¹ ⬝ ap (transport B p) q ⬝ (apd g p) := /-(λx, f x = g x)-/
+    : q =[p] (apdt f p)⁻¹ ⬝ ap (transport B p) q ⬝ (apdt g p) := /-(λx, f x = g x)-/
   by induction p; rewrite [▸*,idp_con,ap_id];exact idpo
 
   definition pathover_eq_FFlr (p : a₁ = a₂) (q : h (f a₁) = a₁) : q =[p] (ap h (ap f p))⁻¹ ⬝ q ⬝ p :=
@@ -233,7 +233,7 @@ namespace eq
   is_equiv.mk (concat p) (concat p⁻¹)
               (con_inv_cancel_left p)
               (inv_con_cancel_left p)
-              (λq, by induction p;induction q;reflexivity)
+              abstract (λq, by induction p;induction q;reflexivity) end
   local attribute is_equiv_concat_left [instance]
 
   definition equiv_eq_closed_left [constructor] (a₃ : A) (p : a₁ = a₂) : (a₁ = a₃) ≃ (a₂ = a₃) :=
@@ -460,7 +460,7 @@ namespace eq
     (p ⬝ q) ▸ (center (Σa, code a)).2
 
     definition decode' {a : A} (c : code a) : a₀ = a :=
-    (is_hprop.elim ⟨a₀, encode idp⟩ ⟨a, c⟩)..1
+    (is_prop.elim ⟨a₀, encode idp⟩ ⟨a, c⟩)..1
 
     definition decode {a : A} (c : code a) : a₀ = a :=
     (decode' (encode idp))⁻¹ ⬝ decode' c
@@ -472,9 +472,10 @@ namespace eq
       { exact decode},
       { intro c,
         unfold [encode, decode, decode'],
-        induction p, esimp, rewrite [is_hprop_elim_self,▸*,+idp_con], apply tr_eq_of_pathover,
-        eapply @sigma.rec_on _ _ (λx, x.2 =[(is_hprop.elim ⟨x.1, x.2⟩ ⟨a, c⟩)..1] c)
-          (center (sigma code)), -- BUG(?): induction fails
+        induction p, esimp, rewrite [is_prop_elim_self,▸*,+idp_con],
+        apply tr_eq_of_pathover,
+        eapply @sigma.rec_on _ _ (λx, x.2 =[(is_prop.elim ⟨x.1, x.2⟩ ⟨a, c⟩)..1] c)
+          (center (sigma code)),
         intro a c, apply eq_pr2},
       { intro q, induction q, esimp, apply con.left_inv, },
     end

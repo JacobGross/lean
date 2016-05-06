@@ -52,7 +52,7 @@ definition to_finset [decidable_eq A] (l : list A) : finset A :=
 
 lemma to_finset_eq_of_nodup [decidable_eq A] {l : list A} (n : nodup l) :
   to_finset_of_nodup l n = to_finset l :=
-assert P : to_nodup_list_of_nodup n = to_nodup_list l, from
+have P : to_nodup_list_of_nodup n = to_nodup_list l, from
   begin
     rewrite [↑to_nodup_list, ↑to_nodup_list_of_nodup],
     congruence,
@@ -82,22 +82,6 @@ theorem mem_of_mem_list {a : A} {l : nodup_list A} : a ∈ elt_of l → a ∈ �
 
 theorem mem_list_of_mem {a : A} {l : nodup_list A} : a ∈ ⟦l⟧ → a ∈ elt_of l :=
 λ ainl, ainl
-
-/- singleton -/
-definition singleton (a : A) : finset A :=
-to_finset_of_nodup [a] !nodup_singleton
-
-theorem mem_singleton [simp] (a : A) : a ∈ singleton a :=
-mem_of_mem_list !mem_cons
-
-theorem eq_of_mem_singleton {x a : A} : x ∈ singleton a → x = a :=
-list.mem_singleton
-
-theorem mem_singleton_eq (x a : A) : (x ∈ singleton a) = (x = a) :=
-propext (iff.intro eq_of_mem_singleton (assume H, eq.subst H !mem_singleton))
-
-lemma eq_of_singleton_eq {a b : A} : singleton a = singleton b → a = b :=
-assume Pseq, eq_of_mem_singleton (Pseq ▸ mem_singleton a)
 
 definition decidable_mem [instance] [h : decidable_eq A] : ∀ (a : A) (s : finset A), decidable (a ∈ s) :=
 λ a s, quot.rec_on_subsingleton s
@@ -152,9 +136,6 @@ quot.lift_on s
 theorem card_empty : card (@empty A) = 0 :=
 rfl
 
-theorem card_singleton (a : A) : card (singleton a) = 1 :=
-rfl
-
 lemma ne_empty_of_card_eq_succ {s : finset A} {n : nat} : card s = succ n → s ≠ ∅ :=
 by intros; substvars; contradiction
 
@@ -185,15 +166,41 @@ quot.induction_on s (λ l : nodup_list A, λ H, list.eq_or_mem_of_mem_insert H)
 theorem mem_of_mem_insert_of_ne {x a : A} {s : finset A} (xin : x ∈ insert a s) : x ≠ a → x ∈ s :=
 or_resolve_right (eq_or_mem_of_mem_insert xin)
 
-theorem mem_insert_eq (x a : A) (s : finset A) : x ∈ insert a s = (x = a ∨ x ∈ s) :=
-propext (iff.intro !eq_or_mem_of_mem_insert
-  (or.rec (λH', (eq.substr H' !mem_insert)) !mem_insert_of_mem))
+theorem mem_insert_iff (x a : A) (s : finset A) : x ∈ insert a s ↔ (x = a ∨ x ∈ s) :=
+iff.intro !eq_or_mem_of_mem_insert
+  (or.rec (λH', (eq.substr H' !mem_insert)) !mem_insert_of_mem)
 
-theorem insert_empty_eq (a : A) : '{a} = singleton a := rfl
+theorem mem_insert_eq (x a : A) (s : finset A) : x ∈ insert a s = (x = a ∨ x ∈ s) :=
+propext !mem_insert_iff
+
+theorem mem_singleton_iff (x a : A) : x ∈ '{a} ↔ (x = a) :=
+by rewrite [mem_insert_eq, mem_empty_eq, or_false]
+
+theorem mem_singleton (a : A) : a ∈ '{a} := mem_insert a ∅
+
+theorem mem_singleton_of_eq {x a : A} (H : x = a) : x ∈ '{a} :=
+by rewrite H; apply mem_insert
+
+theorem eq_of_mem_singleton {x a : A} (H : x ∈ '{a}) : x = a := iff.mp !mem_singleton_iff H
+
+theorem eq_of_singleton_eq {a b : A} (H : '{a} = '{b}) : a = b :=
+have a ∈ '{b}, by rewrite -H; apply mem_singleton,
+eq_of_mem_singleton this
 
 theorem insert_eq_of_mem {a : A} {s : finset A} (H : a ∈ s) : insert a s = s :=
 ext (λ x, eq.substr (mem_insert_eq x a s)
    (or_iff_right_of_imp (λH1, eq.substr H1 H)))
+
+theorem singleton_ne_empty (a : A) : '{a} ≠ ∅ :=
+begin
+  intro H,
+  apply not_mem_empty a,
+  rewrite -H,
+  apply mem_insert
+end
+
+theorem pair_eq_singleton (a : A) : '{a, a} = '{a} :=
+by rewrite [insert_eq_of_mem !mem_singleton]
 
 -- useful in proofs by induction
 theorem forall_of_forall_insert {P : A → Prop} {a : A} {s : finset A}
@@ -230,11 +237,11 @@ quot.induction_on s
       (assume nodup_l, H1)
       (take a l',
         assume IH nodup_al',
-        have a ∉ l', from not_mem_of_nodup_cons nodup_al',
-        assert e : list.insert a l' = a :: l', from insert_eq_of_not_mem this,
-        assert nodup l', from nodup_of_nodup_cons nodup_al',
-        assert P (quot.mk (subtype.tag l' this)), from IH this,
-        assert P (insert a (quot.mk (subtype.tag l' _))), from H2 `a ∉ l'` this,
+        have aux₁: a ∉ l', from not_mem_of_nodup_cons nodup_al',
+        have e : list.insert a l' = a :: l', from insert_eq_of_not_mem aux₁,
+        have nodup l', from nodup_of_nodup_cons nodup_al',
+        have P (quot.mk (subtype.tag l' this)), from IH this,
+        have P (insert a (quot.mk (subtype.tag l' _))), from H2 aux₁ this,
         begin
           revert nodup_al',
           rewrite [-e],
@@ -248,7 +255,7 @@ protected theorem induction_on {P : finset A → Prop} (s : finset A)
   P s :=
 finset.induction H1 H2 s
 
-theorem exists_of_not_empty {s : finset A} : s ≠ ∅ → ∃ a : A, a ∈ s :=
+theorem exists_mem_of_ne_empty {s : finset A} : s ≠ ∅ → ∃ a : A, a ∈ s :=
 begin
   induction s with a s nin ih,
     {intro h, exact absurd rfl h},
@@ -274,7 +281,7 @@ quot.lift_on s
   (λ l, to_finset_of_nodup (erase a (elt_of l)) (nodup_erase_of_nodup a (has_property l)))
   (λ (l₁ l₂ : nodup_list A) (p : l₁ ~ l₂), quot.sound (erase_perm_erase_of_perm a p))
 
-theorem mem_erase (a : A) (s : finset A) : a ∉ erase a s :=
+theorem not_mem_erase (a : A) (s : finset A) : a ∉ erase a s :=
 quot.induction_on s
   (λ l, list.mem_erase_of_nodup _ (has_property l))
 
@@ -288,7 +295,7 @@ theorem erase_empty (a : A) : erase a ∅ = ∅ :=
 rfl
 
 theorem ne_of_mem_erase {a b : A} {s : finset A} : b ∈ erase a s → b ≠ a :=
-by intro h beqa; subst b; exact absurd h !mem_erase
+by intro h beqa; subst b; exact absurd h !not_mem_erase
 
 theorem mem_of_mem_erase {a b : A} {s : finset A} : b ∈ erase a s → b ∈ s :=
 quot.induction_on s (λ l bin, mem_of_mem_erase bin)
@@ -308,11 +315,11 @@ open decidable
 theorem erase_insert {a : A} {s : finset A} : a ∉ s → erase a (insert a s) = s :=
 λ anins, finset.ext (λ b, by_cases
   (λ beqa : b = a, iff.intro
-    (λ bin, by subst b; exact absurd bin !mem_erase)
+    (λ bin, by subst b; exact absurd bin !not_mem_erase)
     (λ bin, by subst b; contradiction))
   (λ bnea : b ≠ a, iff.intro
     (λ bin,
-       assert b ∈ insert a s, from mem_of_mem_erase bin,
+       have b ∈ insert a s, from mem_of_mem_erase bin,
        mem_of_mem_insert_of_ne this bnea)
     (λ bin,
       have b ∈ insert a s, from mem_insert_of_mem _ bin,
@@ -367,17 +374,17 @@ iff.intro
 theorem mem_union_eq (a : A) (s₁ s₂ : finset A) : (a ∈ s₁ ∪ s₂) = (a ∈ s₁ ∨ a ∈ s₂) :=
 propext !mem_union_iff
 
-theorem union.comm (s₁ s₂ : finset A) : s₁ ∪ s₂ = s₂ ∪ s₁ :=
+theorem union_comm (s₁ s₂ : finset A) : s₁ ∪ s₂ = s₂ ∪ s₁ :=
 ext (λ a, by rewrite [*mem_union_eq]; exact or.comm)
 
-theorem union.assoc (s₁ s₂ s₃ : finset A) : (s₁ ∪ s₂) ∪ s₃ = s₁ ∪ (s₂ ∪ s₃) :=
+theorem union_assoc (s₁ s₂ s₃ : finset A) : (s₁ ∪ s₂) ∪ s₃ = s₁ ∪ (s₂ ∪ s₃) :=
 ext (λ a, by rewrite [*mem_union_eq]; exact or.assoc)
 
-theorem union.left_comm (s₁ s₂ s₃ : finset A) : s₁ ∪ (s₂ ∪ s₃) = s₂ ∪ (s₁ ∪ s₃) :=
-!left_comm union.comm union.assoc s₁ s₂ s₃
+theorem union_left_comm (s₁ s₂ s₃ : finset A) : s₁ ∪ (s₂ ∪ s₃) = s₂ ∪ (s₁ ∪ s₃) :=
+!left_comm union_comm union_assoc s₁ s₂ s₃
 
-theorem union.right_comm (s₁ s₂ s₃ : finset A) : (s₁ ∪ s₂) ∪ s₃ = (s₁ ∪ s₃) ∪ s₂ :=
-!right_comm union.comm union.assoc s₁ s₂ s₃
+theorem union_right_comm (s₁ s₂ s₃ : finset A) : (s₁ ∪ s₂) ∪ s₃ = (s₁ ∪ s₃) ∪ s₂ :=
+!right_comm union_comm union_assoc s₁ s₂ s₃
 
 theorem union_self (s : finset A) : s ∪ s = s :=
 ext (λ a, iff.intro
@@ -390,19 +397,14 @@ ext (λ a, iff.intro
   (suppose a ∈ s, mem_union_left _ this))
 
 theorem empty_union (s : finset A) : ∅ ∪ s = s :=
-calc ∅ ∪ s = s ∪ ∅ : union.comm
+calc ∅ ∪ s = s ∪ ∅ : union_comm
        ... = s     : union_empty
 
-theorem insert_eq (a : A) (s : finset A) : insert a s = singleton a ∪ s :=
-ext (take x,
-  calc
-    x ∈ insert a s ↔ x ∈ insert a s            : iff.refl
-               ... = (x = a ∨ x ∈ s)           : mem_insert_eq
-               ... = (x ∈ singleton a ∨ x ∈ s) : mem_singleton_eq
-               ... = (x ∈ '{a} ∪ s)         : mem_union_eq)
+theorem insert_eq (a : A) (s : finset A) : insert a s = '{a} ∪ s :=
+ext (take x, by rewrite [mem_insert_iff, mem_union_iff, mem_singleton_iff])
 
 theorem insert_union (a : A) (s t : finset A) : insert a (s ∪ t) = insert a s ∪ t :=
-by rewrite [*insert_eq, union.assoc]
+by rewrite [insert_eq, insert_eq a s, union_assoc]
 end union
 
 /- inter -/
@@ -436,17 +438,17 @@ iff.intro
 theorem mem_inter_eq (a : A) (s₁ s₂ : finset A) : (a ∈ s₁ ∩ s₂) = (a ∈ s₁ ∧ a ∈ s₂) :=
 propext !mem_inter_iff
 
-theorem inter.comm (s₁ s₂ : finset A) : s₁ ∩ s₂ = s₂ ∩ s₁ :=
+theorem inter_comm (s₁ s₂ : finset A) : s₁ ∩ s₂ = s₂ ∩ s₁ :=
 ext (λ a, by rewrite [*mem_inter_eq]; exact and.comm)
 
-theorem inter.assoc (s₁ s₂ s₃ : finset A) : (s₁ ∩ s₂) ∩ s₃ = s₁ ∩ (s₂ ∩ s₃) :=
+theorem inter_assoc (s₁ s₂ s₃ : finset A) : (s₁ ∩ s₂) ∩ s₃ = s₁ ∩ (s₂ ∩ s₃) :=
 ext (λ a, by rewrite [*mem_inter_eq]; exact and.assoc)
 
-theorem inter.left_comm (s₁ s₂ s₃ : finset A) : s₁ ∩ (s₂ ∩ s₃) = s₂ ∩ (s₁ ∩ s₃) :=
-!left_comm inter.comm inter.assoc s₁ s₂ s₃
+theorem inter_left_comm (s₁ s₂ s₃ : finset A) : s₁ ∩ (s₂ ∩ s₃) = s₂ ∩ (s₁ ∩ s₃) :=
+!left_comm inter_comm inter_assoc s₁ s₂ s₃
 
-theorem inter.right_comm (s₁ s₂ s₃ : finset A) : (s₁ ∩ s₂) ∩ s₃ = (s₁ ∩ s₃) ∩ s₂ :=
-!right_comm inter.comm inter.assoc s₁ s₂ s₃
+theorem inter_right_comm (s₁ s₂ s₃ : finset A) : (s₁ ∩ s₂) ∩ s₃ = (s₁ ∩ s₃) ∩ s₂ :=
+!right_comm inter_comm inter_assoc s₁ s₂ s₃
 
 theorem inter_self (s : finset A) : s ∩ s = s :=
 ext (λ a, iff.intro
@@ -459,24 +461,24 @@ ext (λ a, iff.intro
   (suppose a ∈ ∅,     absurd this !not_mem_empty))
 
 theorem empty_inter (s : finset A) : ∅ ∩ s = ∅ :=
-calc ∅ ∩ s = s ∩ ∅ : inter.comm
+calc ∅ ∩ s = s ∩ ∅ : inter_comm
        ... = ∅     : inter_empty
 
 theorem singleton_inter_of_mem {a : A} {s : finset A} (H : a ∈ s) :
-  singleton a ∩ s = singleton a :=
+  '{a} ∩ s = '{a} :=
 ext (take x,
   begin
-    rewrite [mem_inter_eq, !mem_singleton_eq],
+    rewrite [mem_inter_eq, !mem_singleton_iff],
     exact iff.intro
       (suppose x = a ∧ x ∈ s, and.left this)
       (suppose x = a, and.intro this (eq.subst (eq.symm this) H))
   end)
 
 theorem singleton_inter_of_not_mem {a : A} {s : finset A} (H : a ∉ s) :
-  singleton a ∩ s = ∅ :=
+  '{a} ∩ s = ∅ :=
 ext (take x,
   begin
-    rewrite [mem_inter_eq, !mem_singleton_eq, mem_empty_eq],
+    rewrite [mem_inter_eq, !mem_singleton_iff, mem_empty_eq],
     exact iff.intro
       (suppose x = a ∧ x ∈ s, H (eq.subst (and.left this) (and.right this)))
       (false.elim)
@@ -488,16 +490,16 @@ section inter
 variable [h : decidable_eq A]
 include h
 
-theorem inter.distrib_left (s t u : finset A) : s ∩ (t ∪ u) = (s ∩ t) ∪ (s ∩ u) :=
+theorem inter_distrib_left (s t u : finset A) : s ∩ (t ∪ u) = (s ∩ t) ∪ (s ∩ u) :=
 ext (take x, by rewrite [mem_inter_eq, *mem_union_eq, *mem_inter_eq]; apply and.left_distrib)
 
-theorem inter.distrib_right (s t u : finset A) : (s ∪ t) ∩ u = (s ∩ u) ∪ (t ∩ u) :=
+theorem inter_distrib_right (s t u : finset A) : (s ∪ t) ∩ u = (s ∩ u) ∪ (t ∩ u) :=
 ext (take x, by rewrite [mem_inter_eq, *mem_union_eq, *mem_inter_eq]; apply and.right_distrib)
 
-theorem union.distrib_left (s t u : finset A) : s ∪ (t ∩ u) = (s ∪ t) ∩ (s ∪ u) :=
+theorem union_distrib_left (s t u : finset A) : s ∪ (t ∩ u) = (s ∪ t) ∩ (s ∪ u) :=
 ext (take x, by rewrite [mem_union_eq, *mem_inter_eq, *mem_union_eq]; apply or.left_distrib)
 
-theorem union.distrib_right (s t u : finset A) : (s ∩ t) ∪ u = (s ∪ u) ∩ (t ∪ u) :=
+theorem union_distrib_right (s t u : finset A) : (s ∩ t) ∪ u = (s ∪ u) ∩ (t ∪ u) :=
 ext (take x, by rewrite [mem_union_eq, *mem_inter_eq, *mem_union_eq]; apply or.right_distrib)
 end inter
 
@@ -667,6 +669,14 @@ iff.intro lt_of_mem_upto mem_upto_of_lt
 theorem mem_upto_eq (a n : nat) : a ∈ upto n = (a < n) :=
 propext !mem_upto_iff
 end upto
+
+theorem upto_zero : upto 0 = ∅ := rfl
+
+theorem upto_succ (n : ℕ) : upto (succ n) = upto n ∪ '{n} :=
+begin
+  apply ext, intro x,
+  rewrite [mem_union_iff, *mem_upto_iff, mem_singleton_iff, lt_succ_iff_le, nat.le_iff_lt_or_eq],
+end
 
 /- useful rules for calculations with quantifiers -/
 theorem exists_mem_empty_iff {A : Type} (P : A → Prop) : (∃ x, x ∈ ∅ ∧ P x) ↔ false :=

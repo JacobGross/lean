@@ -25,7 +25,6 @@ Author: Leonardo de Moura
 #include "library/coercion.h"
 #include "library/unifier_plugin.h"
 #include "library/io_state.h"
-#include "library/kernel_bindings.h"
 #include "library/idx_metavar.h"
 #include "library/sorry.h"
 #include "library/placeholder.h"
@@ -42,13 +41,15 @@ Author: Leonardo de Moura
 #include "library/composition_manager.h"
 #include "library/noncomputable.h"
 #include "library/aux_recursors.h"
-#include "library/decl_stats.h"
-#include "library/meng_paulson.h"
 #include "library/class_instance_resolution.h"
 #include "library/type_context.h"
 #include "library/congr_lemma_manager.h"
 #include "library/app_builder.h"
 #include "library/attribute_manager.h"
+#include "library/fun_info_manager.h"
+#include "library/unification_hint.h"
+#include "library/defeq_simp_lemmas.h"
+#include "library/defeq_simplifier.h"
 
 namespace lean {
 void initialize_library_module() {
@@ -59,7 +60,6 @@ void initialize_library_module() {
     initialize_print();
     initialize_placeholder();
     initialize_idx_metavar();
-    initialize_kernel_bindings();
     initialize_io_state();
     initialize_unifier();
     initialize_kernel_serializer();
@@ -90,23 +90,27 @@ void initialize_library_module() {
     initialize_composition_manager();
     initialize_noncomputable();
     initialize_aux_recursors();
-    initialize_decl_stats();
-    initialize_meng_paulson();
     initialize_class_instance_resolution();
     initialize_type_context();
     initialize_light_rule_set();
     initialize_congr_lemma_manager();
     initialize_app_builder();
+    initialize_fun_info_manager();
+    initialize_unification_hint();
+    initialize_defeq_simp_lemmas();
+    initialize_defeq_simplifier();
 }
 
 void finalize_library_module() {
+    finalize_defeq_simplifier();
+    finalize_defeq_simp_lemmas();
+    finalize_unification_hint();
+    finalize_fun_info_manager();
     finalize_app_builder();
     finalize_congr_lemma_manager();
     finalize_light_rule_set();
     finalize_type_context();
     finalize_class_instance_resolution();
-    finalize_meng_paulson();
-    finalize_decl_stats();
     finalize_aux_recursors();
     finalize_noncomputable();
     finalize_composition_manager();
@@ -137,7 +141,6 @@ void finalize_library_module() {
     finalize_kernel_serializer();
     finalize_unifier();
     finalize_io_state();
-    finalize_kernel_bindings();
     finalize_idx_metavar();
     finalize_placeholder();
     finalize_print();

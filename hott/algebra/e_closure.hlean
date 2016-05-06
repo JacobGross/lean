@@ -23,18 +23,18 @@ namespace e_closure
   postfix `⁻¹ʳ`:(max+10) := e_closure.symm
   notation `[`:max a `]`:0 := e_closure.of_rel a
   notation `<`:max p `>`:0 := e_closure.of_path _ p
-  abbreviation rfl {A : Type} {R : A → A → Type} {a : A} := of_path R (idpath a)
+  abbreviation rfl [constructor] {A : Type} {R : A → A → Type} {a : A} := of_path R (idpath a)
 end e_closure
 open e_closure
 namespace relation
 
 section
   parameters {A : Type}
-             (R : A → A → Type)
+             {R : A → A → Type}
   local abbreviation T := e_closure R
 
   variables ⦃a a' a'' : A⦄ {s : R a a'} {r : T a a} {B C : Type}
-  parameter {R}
+
   protected definition e_closure.elim [unfold 8] {f : A → B}
     (e : Π⦃a a' : A⦄, R a a' → f a = f a') (t : T a a') : f a = f a' :=
   begin
@@ -171,15 +171,15 @@ section
   definition ap_e_closure_elimo_h [unfold 12]  {g' : Πb, Q (g b)}
     (p : Π⦃a a' : A⦄, R a a' → f a = f a')
     (po : Π⦃a a' : A⦄ (s : R a a'), g' (f a) =[p s] g' (f a'))
-    (q : Π⦃a a' : A⦄ (s : R a a'), apdo g' (p s) = po s)
-    (t : T a a') : apdo g' (e_closure.elim p t) = e_closure.elimo p po t :=
+    (q : Π⦃a a' : A⦄ (s : R a a'), apd g' (p s) = po s)
+    (t : T a a') : apd g' (e_closure.elim p t) = e_closure.elimo p po t :=
   begin
     induction t with a a' r a a' pp a a' r IH a a' a'' r r' IH₁ IH₂,
       apply q,
       induction pp, reflexivity,
       esimp [e_closure.elim],
-      exact apdo_inv g' (e_closure.elim p r) ⬝ IH⁻²ᵒ,
-      exact apdo_con g' (e_closure.elim p r) (e_closure.elim p r') ⬝ (IH₁ ◾o IH₂)
+      exact apd_inv g' (e_closure.elim p r) ⬝ IH⁻²ᵒ,
+      exact apd_con g' (e_closure.elim p r) (e_closure.elim p r') ⬝ (IH₁ ◾o IH₂)
   end
 
   theorem e_closure_elimo_ap {g' : Π(a : A), Q (g (f a))}

@@ -34,6 +34,7 @@ typedef enum {
     LEAN_EXPR_APP,
     LEAN_EXPR_LAMBDA,
     LEAN_EXPR_PI,
+    LEAN_EXPR_LET,
     LEAN_EXPR_MACRO,
 } lean_expr_kind;
 
@@ -41,8 +42,7 @@ typedef enum {
     LEAN_BINDER_DEFAULT,           // (x : A)
     LEAN_BINDER_IMPLICIT,          // {x : A}
     LEAN_BINDER_STRICT_IMPLICIT,   // {{x : A}}
-    LEAN_BINDER_INST_IMPLICIT,     // [x : A]
-    LEAN_BINDER_HIDDEN             // like (x : A) but not included in proof goals
+    LEAN_BINDER_INST_IMPLICIT      // [x : A]
 } lean_binder_kind;
 
 /** \brief Create a variable with de-Bruijn index \c i.

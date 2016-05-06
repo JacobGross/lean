@@ -30,17 +30,17 @@ protected proposition eta (z : ℂ) : complex.mk (complex.re z) (complex.im z) =
 by cases z; exact rfl
 
 definition of_real [coercion] (x : ℝ) : ℂ := complex.mk x 0
-definition of_rat [coercion] (q : ℚ) : ℂ := rat.to.complex q
-definition of_int [coercion] (i : ℤ) : ℂ := int.to.complex i
-definition of_nat [coercion] (n : ℕ) : ℂ := nat.to.complex n
-definition of_num [coercion] [reducible] (n : num) : ℂ := num.to.complex n
+definition of_rat [coercion] (q : ℚ) : ℂ := q
+definition of_int [coercion] (i : ℤ) : ℂ := i
+definition of_nat [coercion] (n : ℕ) : ℂ := n
+definition of_num [coercion] [reducible] (n : num) : ℂ := n
 
 protected definition prio : num := num.pred real.prio
 
-definition complex_has_zero [reducible] [instance] [priority complex.prio] : has_zero ℂ :=
+definition complex_has_zero [instance] [priority complex.prio] : has_zero ℂ :=
 has_zero.mk (of_nat 0)
 
-definition complex_has_one [reducible] [instance] [priority complex.prio] : has_one ℂ :=
+definition complex_has_one [instance] [priority complex.prio] : has_one ℂ :=
 has_one.mk (of_nat 1)
 
 theorem re_of_real (x : ℝ) : re (of_real x) = x := rfl
@@ -60,13 +60,13 @@ complex.mk
 
 /- notation -/
 
-definition complex_has_add [reducible] [instance] [priority complex.prio] : has_add complex :=
+definition complex_has_add [instance] [priority complex.prio] : has_add complex :=
 has_add.mk complex.add
 
-definition complex_has_neg [reducible] [instance] [priority complex.prio] : has_neg complex :=
+definition complex_has_neg [instance] [priority complex.prio] : has_neg complex :=
 has_neg.mk complex.neg
 
-definition complex_has_mul [reducible] [instance] [priority complex.prio] : has_mul complex :=
+definition complex_has_mul [instance] [priority complex.prio] : has_mul complex :=
 has_mul.mk complex.mul
 
 protected theorem add_def (z w : ℂ) :
@@ -179,21 +179,11 @@ protected definition comm_ring [reducible] : comm_ring complex :=
 
 local attribute complex.comm_ring [instance]
 
-definition complex_has_sub [reducible] [instance] [priority complex.prio] : has_sub complex :=
+definition complex_has_sub [instance] [priority complex.prio] : has_sub complex :=
 has_sub.mk has_sub.sub
 
 theorem of_real_sub (x y : ℝ) : of_real (x - y) = of_real x - of_real y :=
 rfl
-
--- TODO: move these
-private lemma eq_zero_of_mul_self_eq_zero {x : ℝ} (H : x * x = 0) : x = 0 :=
- iff.mp !or_self (!eq_zero_or_eq_zero_of_mul_eq_zero H)
-
-private lemma eq_zero_of_sum_square_eq_zero {x y : ℝ} (H : x * x + y * y = 0) : x = 0 :=
-have x * x ≤ (0 : ℝ), from calc
-  x * x ≤ x * x + y * y : le_add_of_nonneg_right (mul_self_nonneg y)
-    ... = 0             : H,
-eq_zero_of_mul_self_eq_zero (le.antisymm this (mul_self_nonneg x))
 
 /- complex modulus and conjugate-/
 
@@ -208,8 +198,8 @@ by rewrite [↑cmod, re_of_real, im_of_real, mul_zero, add_zero]
 theorem eq_zero_of_cmod_eq_zero {z : ℂ} (H : cmod z = 0) : z = 0 :=
 have H1 : (complex.re z) * (complex.re z) + (complex.im z) * (complex.im z) = 0,
   from H,
-have H2 : complex.re z = 0, from eq_zero_of_sum_square_eq_zero H1,
-have H3 : complex.im z = 0, from eq_zero_of_sum_square_eq_zero (!add.comm ▸ H1),
+have H2 : complex.re z = 0, from eq_zero_of_mul_self_add_mul_self_eq_zero H1,
+have H3 : complex.im z = 0, from eq_zero_of_mul_self_add_mul_self_eq_zero (!add.comm ▸ H1),
 show z = 0, from complex.eq H2 H3
 
 definition conj (z : ℂ) : ℂ := complex.mk (complex.re z) (-(complex.im z))
@@ -244,7 +234,7 @@ end
 
 protected noncomputable definition inv (z : ℂ) : complex := conj z * of_real (cmod z)⁻¹
 
-protected noncomputable definition complex_has_inv [reducible] [instance] [priority complex.prio] :
+protected noncomputable definition complex_has_inv [instance] [priority complex.prio] :
   has_inv complex := has_inv.mk complex.inv
 
 protected theorem inv_def (z : ℂ) : z⁻¹ = conj z * of_real (cmod z)⁻¹ := rfl
@@ -262,7 +252,7 @@ classical.by_cases
 
 noncomputable protected definition div (z w : ℂ) : ℂ := z * w⁻¹
 
-noncomputable definition complex_has_div [instance] [reducible] [priority complex.prio] :
+noncomputable definition complex_has_div [instance] [priority complex.prio] :
     has_div complex :=
   has_div.mk complex.div
 
@@ -270,7 +260,7 @@ protected theorem div_def (z w : ℂ) : z / w = z * w⁻¹ := rfl
 
 theorem of_real_div (x y : ℝ) : of_real (x / y) = of_real x / of_real y :=
 have H : x / y = x * y⁻¹, from rfl,
-by+ rewrite [H, complex.div_def, of_real_mul, of_real_inv]
+by rewrite [H, complex.div_def, of_real_mul, of_real_inv]
 
 theorem conj_inv (z : ℂ) : (conj z)⁻¹ = conj (z⁻¹) :=
 by rewrite [*complex.inv_def, conj_mul, *conj_conj, conj_of_real, cmod_conj]
@@ -288,7 +278,7 @@ take z w, classical.prop_decidable (z = w)
 protected theorem zero_ne_one : (0 : ℂ) ≠ 1 :=
 assume H, zero_ne_one (eq_of_of_real_eq_of_real H)
 
-protected noncomputable definition discrete_field [reducible][trans_instance] :
+protected noncomputable definition discrete_field [trans_instance] :
   discrete_field ℂ :=
 ⦃ discrete_field, complex.comm_ring,
   mul_inv_cancel   := @complex.mul_inv_cancel,

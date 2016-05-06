@@ -115,7 +115,6 @@ theorem equiv_abs_of_ge_zero {s : seq} (Hs : regular s) (Hz : s_le zero s) : s_a
     apply add_le_add,
     repeat (apply inv_ge_of_le; apply Hn),
     krewrite pnat.add_halves,
-    apply le.refl
   end
 
 theorem equiv_neg_abs_of_le_zero {s : seq} (Hs : regular s) (Hz : s_le s zero) : s_abs s ≡ sneg s :=
@@ -146,7 +145,6 @@ theorem equiv_neg_abs_of_le_zero {s : seq} (Hs : regular s) (Hz : s_le s zero) :
     apply add_le_add,
     repeat (apply inv_ge_of_le; apply Hn),
     krewrite pnat.add_halves,
-    apply le.refl,
     let Hneg' := lt_of_not_ge Hneg,
     rewrite [abs_of_neg Hneg', ↑sneg, sub_neg_eq_add, neg_add_eq_sub, sub_self,
                 abs_zero],
@@ -213,6 +211,56 @@ theorem approx_spec (x : ℝ) (n : ℕ+) : abs (x - (of_rat (approx x n))) ≤ o
 theorem approx_spec' (x : ℝ) (n : ℕ+) : abs ((of_rat (approx x n)) - x) ≤ of_rat n⁻¹ :=
   by rewrite abs_sub; apply approx_spec
 
+theorem ex_rat_pos_lower_bound_of_pos {x : ℝ} (H : x > 0) : ∃ q : ℚ, q > 0 ∧ of_rat q ≤ x :=
+  if Hgeo : x ≥ 1 then
+    exists.intro 1 (and.intro zero_lt_one Hgeo)
+  else
+    have Hdp : 1 / x > 0, from one_div_pos_of_pos H,
+    begin
+      cases rat_approx (1 / x) 2 with q Hq,
+      have Hqp : q > 0, begin
+        apply lt_of_not_ge,
+        intro Hq2,
+        note Hx' := one_div_lt_one_div_of_lt H (lt_of_not_ge Hgeo),
+        rewrite div_one at Hx',
+        have Horqn : of_rat q ≤ 0, begin
+          krewrite -of_rat_zero,
+          apply of_rat_le_of_rat_of_le Hq2
+        end,
+        have Hgt1 : 1 / x - of_rat q > 1, from calc
+          1 / x - of_rat q = 1 / x + -of_rat q : sub_eq_add_neg
+                       ... ≥ 1 / x             : le_add_of_nonneg_right (neg_nonneg_of_nonpos Horqn)
+                       ... > 1                 : Hx',
+        have Hpos : 1 / x - of_rat q > 0, from gt.trans Hgt1 zero_lt_one,
+        rewrite [abs_of_pos Hpos at Hq],
+        apply not_le_of_gt Hgt1,
+        apply le.trans,
+        apply Hq,
+        krewrite -of_rat_one,
+        apply of_rat_le_of_rat_of_le,
+        apply inv_le_one
+      end,
+      existsi 1 / (2⁻¹ + q),
+      split,
+      apply div_pos_of_pos_of_pos,
+      exact zero_lt_one,
+      apply add_pos,
+      apply pnat.inv_pos,
+      exact Hqp,
+      note Hle2 := sub_le_of_abs_sub_le_right Hq,
+      note Hle3 := le_add_of_sub_left_le Hle2,
+      note Hle4 := one_div_le_of_one_div_le_of_pos H Hle3,
+      rewrite [of_rat_divide, of_rat_add],
+      exact Hle4
+    end
+
+theorem ex_rat_neg_upper_bound_of_neg {x : ℝ} (H : x < 0) : ∃ q : ℚ, q < 0 ∧ x ≤ of_rat q :=
+  have H' : -x > 0, from neg_pos_of_neg H,
+  obtain q [Hq1 Hq2], from ex_rat_pos_lower_bound_of_pos H',
+  exists.intro (-q) (and.intro
+    (neg_neg_of_pos Hq1)
+    (le_neg_of_le_neg Hq2))
+
 notation `r_seq` := ℕ+ → ℝ
 
 noncomputable definition converges_to_with_rate (X : r_seq) (a : ℝ) (N : ℕ+ → ℕ+) :=
@@ -239,7 +287,6 @@ theorem cauchy_with_rate_of_converges_to_with_rate {X : r_seq} {a : ℝ} {N : �
     xrewrite -of_rat_add,
     apply of_rat_le_of_rat_of_le,
     krewrite pnat.add_halves,
-    apply rat.le_refl
   end
 
 private definition Nb (M : ℕ+ → ℕ+) := λ k, pnat.max (3 * k) (M (2 * k))
@@ -375,7 +422,6 @@ theorem converges_to_with_rate_of_cauchy_with_rate : converges_to_with_rate X li
     apply Nb_spec_left,
     rewrite -*pnat.mul_assoc,
     krewrite pnat.p_add_fractions,
-    apply rat.le_refl
   end
 
 end lim_seq
@@ -508,11 +554,11 @@ open nat
 
 theorem archimedean_small {ε : ℝ} (H : ε > 0) : ∃ (n : ℕ), 1 / succ n < ε :=
 let n := int.nat_abs (ceil (2 / ε)) in
-assert int.of_nat n ≥ ceil (2 / ε),
+have int.of_nat n ≥ ceil (2 / ε),
   by rewrite of_nat_nat_abs; apply le_abs_self,
 have int.of_nat (succ n) ≥ ceil (2 / ε),
   begin apply le.trans, exact this, apply int.of_nat_le_of_nat_of_le, apply le_succ end,
-have H₁ : succ n ≥ ceil (2 / ε), from of_int_le_of_int_of_le this,
+have H₁ : int.succ n ≥ ceil (2 / ε), from of_int_le_of_int_of_le this,
 have H₂ : succ n ≥ 2 / ε, from !le.trans !le_ceil H₁,
 have H₃ : 2 / ε > 0, from div_pos_of_pos_of_pos two_pos H,
 have 1 / succ n < ε, from calc
@@ -571,7 +617,7 @@ private theorem under_spec : ¬ ub under :=
     rewrite ↑ub,
     apply not_forall_of_exists_not,
     existsi elt,
-    apply iff.mpr not_implies_iff_and_not,
+    apply iff.mpr !not_implies_iff_and_not,
     apply and.intro,
     apply inh,
     apply not_le_of_gt under_spec1
@@ -730,7 +776,7 @@ private theorem PB (n : ℕ) : ub (over_seq n) :=
 private theorem under_lt_over : under < over :=
   begin
     cases exists_not_of_not_forall under_spec with [x, Hx],
-    cases iff.mp not_implies_iff_and_not Hx with [HXx, Hxu],
+    cases and_not_of_not_implies Hx with [HXx, Hxu],
     apply lt_of_of_rat_lt_of_rat,
     apply lt_of_lt_of_le,
     apply lt_of_not_ge Hxu,
@@ -741,7 +787,7 @@ private theorem under_seq_lt_over_seq : ∀ m n : ℕ, under_seq m < over_seq n 
   begin
     intros,
     cases exists_not_of_not_forall (PA m) with [x, Hx],
-    cases iff.mp not_implies_iff_and_not Hx with [HXx, Hxu],
+    cases iff.mp !not_implies_iff_and_not Hx with [HXx, Hxu],
     apply lt_of_of_rat_lt_of_rat,
     apply lt_of_lt_of_le,
     apply lt_of_not_ge Hxu,
@@ -770,7 +816,7 @@ private theorem under_seq_mono_helper (i k : ℕ) : under_seq i ≤ under_seq (i
       rewrite [if_neg Havg, ↑avg_seq, ↑avg],
       apply rat.le_trans,
       apply Ha,
-      rewrite -add_halves at {1},
+      rewrite -(add_halves (under_seq (i + a))) at {1},
       apply add_le_add_right,
       apply div_le_div_of_le_of_pos,
       apply rat.le_of_lt,
@@ -897,7 +943,7 @@ private theorem under_lowest_bound : ∀ y : ℝ, ub y → sup_under ≤ y :=
     apply le_of_reprs_le,
     intro n,
     cases exists_not_of_not_forall (PA _) with [x, Hx],
-    cases iff.mp not_implies_iff_and_not Hx with [HXx, Hxn],
+    cases and_not_of_not_implies Hx with [HXx, Hxn],
     apply le.trans,
     apply le_of_lt,
     apply lt_of_not_ge Hxn,

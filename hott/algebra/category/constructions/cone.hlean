@@ -60,7 +60,7 @@ namespace category
   theorem cone_hom_eq {f f' : cone_hom x y} (q : cone_to_hom f = cone_to_hom f') : f = f' :=
   begin
     induction f, induction f', esimp at *, induction q, apply ap (cone_hom.mk f),
-    apply @is_hprop.elim, apply pi.is_trunc_pi, intro x, apply is_trunc_eq, -- type class fails
+    apply @is_prop.elim, apply pi.is_trunc_pi, intro x, apply is_trunc_eq, -- type class fails
   end
 
   variable (F)
@@ -69,12 +69,14 @@ namespace category
   @precategory.mk _ cone_hom
                  abstract begin
                    intro x y,
-                   assert H : cone_hom x y ≃ Σ(f : x ⟶ y), Πi, cone_to_nat y i ∘ f = cone_to_nat x i,
-                   { fapply equiv.MK,
+                   have H : cone_hom x y ≃ Σ(f : x ⟶ y), Πi, cone_to_nat y i ∘ f = cone_to_nat x i,
+                   begin
+                     fapply equiv.MK,
                      { intro f, induction f, constructor, assumption},
                      { intro v, induction v, constructor, assumption},
                      { intro v, induction v, reflexivity},
-                     { intro f, induction f, reflexivity}},
+                     { intro f, induction f, reflexivity}
+                   end,
                    apply is_trunc.is_trunc_equiv_closed_rev, exact H,
                    fapply sigma.is_trunc_sigma, intros,
                    apply is_trunc_succ, apply pi.is_trunc_pi, intros, esimp,
@@ -120,7 +122,7 @@ namespace category
     { intro v, exact cone_iso.mk v.1 v.2},
     { intro v, induction v with f p, fapply sigma_eq: esimp,
       { apply iso_eq, reflexivity},
-      { apply is_hprop.elimo, apply is_trunc_pi, intro i, apply is_hprop_hom_eq}},
+      { apply is_prop.elimo, apply is_trunc_pi, intro i, apply is_prop_hom_eq}},
     { intro h, esimp, apply iso_eq, apply cone_hom_eq, reflexivity},
   end
 
@@ -134,8 +136,8 @@ namespace category
     { intro v, induction v with p q, induction x with c η, induction y with c' η', esimp at *,
       induction p, esimp, fapply sigma_eq: esimp,
       { apply c_cone_obj_eq},
-      { apply is_hprop.elimo, apply is_trunc_pi, intro i, apply is_hprop_hom_eq}},
-    { intro r, induction r, esimp, induction x, esimp, apply ap02, apply is_hprop.elim},
+      { apply is_prop.elimo, apply is_trunc_pi, intro i, apply is_prop_hom_eq}},
+    { intro r, induction r, esimp, induction x, esimp, apply ap02, apply is_prop.elim},
   end
 
   section is_univalent

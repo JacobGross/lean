@@ -77,6 +77,12 @@ section
     a * b < c * b : mul_lt_mul_of_pos_right Hac pos_b
       ... ≤ c * d : mul_le_mul_of_nonneg_left Hbd nn_c
 
+  theorem mul_lt_mul' {a b c d : A} (H1 : a < c) (H2 : b < d) (H3 : b ≥ 0) (H4 : c > 0) :
+        a * b < c * d :=
+  calc
+    a * b ≤ c * b : mul_le_mul_of_nonneg_right (le_of_lt H1) H3
+      ... < c * d : mul_lt_mul_of_pos_left H2 H4
+
   theorem mul_pos {a b : A} (Ha : a > 0) (Hb : b > 0) : a * b > 0 :=
   begin
     have H : 0 * b < a * b, from mul_lt_mul_of_pos_right Ha Hb,
@@ -97,6 +103,9 @@ section
     rewrite zero_mul at  H,
     exact H
   end
+
+  theorem mul_self_lt_mul_self {a b : A} (H1 : 0 ≤ a) (H2 : a < b) : a * a < b * b :=
+  mul_lt_mul' H2 H2 H1 (lt_of_le_of_lt H1 H2)
 end
 
 structure linear_ordered_semiring [class] (A : Type)
@@ -188,7 +197,7 @@ section
 end
 
 structure decidable_linear_ordered_semiring [class] (A : Type)
-  extends linear_ordered_semiring A, decidable_linear_order A
+  extends linear_ordered_semiring A, decidable_linear_ordered_cancel_comm_monoid A
 
 /- ring structures -/
 
@@ -200,7 +209,7 @@ structure ordered_ring [class] (A : Type)
 theorem ordered_ring.mul_le_mul_of_nonneg_left [s : ordered_ring A] {a b c : A}
         (Hab : a ≤ b) (Hc : 0 ≤ c) : c * a ≤ c * b :=
 have H1 : 0 ≤ b - a, from iff.elim_right !sub_nonneg_iff_le Hab,
-assert H2 : 0 ≤ c * (b - a), from ordered_ring.mul_nonneg _ _ Hc H1,
+have H2 : 0 ≤ c * (b - a), from ordered_ring.mul_nonneg _ _ Hc H1,
 begin
   rewrite mul_sub_left_distrib at H2,
   exact (iff.mp !sub_nonneg_iff_le H2)
@@ -209,7 +218,7 @@ end
 theorem ordered_ring.mul_le_mul_of_nonneg_right [s : ordered_ring A] {a b c : A}
         (Hab : a ≤ b) (Hc : 0 ≤ c) : a * c ≤ b * c  :=
 have H1 : 0 ≤ b - a, from iff.elim_right !sub_nonneg_iff_le Hab,
-assert H2 : 0 ≤ (b - a) * c, from ordered_ring.mul_nonneg _ _ H1 Hc,
+have H2 : 0 ≤ (b - a) * c, from ordered_ring.mul_nonneg _ _ H1 Hc,
 begin
   rewrite mul_sub_right_distrib at H2,
   exact (iff.mp !sub_nonneg_iff_le H2)
@@ -218,7 +227,7 @@ end
 theorem ordered_ring.mul_lt_mul_of_pos_left [s : ordered_ring A] {a b c : A}
        (Hab : a < b) (Hc : 0 < c) : c * a < c * b :=
 have H1 : 0 < b - a, from iff.elim_right !sub_pos_iff_lt Hab,
-assert H2 : 0 < c * (b - a), from ordered_ring.mul_pos _ _ Hc H1,
+have H2 : 0 < c * (b - a), from ordered_ring.mul_pos _ _ Hc H1,
 begin
   rewrite mul_sub_left_distrib at H2,
   exact (iff.mp !sub_pos_iff_lt H2)
@@ -227,13 +236,13 @@ end
 theorem ordered_ring.mul_lt_mul_of_pos_right [s : ordered_ring A] {a b c : A}
        (Hab : a < b) (Hc : 0 < c) : a * c < b * c :=
 have H1 : 0 < b - a, from iff.elim_right !sub_pos_iff_lt Hab,
-assert H2 : 0 < (b - a) * c, from ordered_ring.mul_pos _ _ H1 Hc,
+have H2 : 0 < (b - a) * c, from ordered_ring.mul_pos _ _ H1 Hc,
 begin
   rewrite mul_sub_right_distrib at H2,
   exact (iff.mp !sub_pos_iff_lt H2)
 end
 
-definition ordered_ring.to_ordered_semiring [trans_instance] [reducible]
+definition ordered_ring.to_ordered_semiring [trans_instance]
     [s : ordered_ring A] :
   ordered_semiring A :=
 ⦃ ordered_semiring, s,
@@ -255,7 +264,7 @@ section
 
   theorem mul_le_mul_of_nonpos_left (H : b ≤ a) (Hc : c ≤ 0) : c * a ≤ c * b :=
   have Hc' : -c ≥ 0, from iff.mpr !neg_nonneg_iff_nonpos Hc,
-  assert H1 : -c * b ≤ -c * a, from mul_le_mul_of_nonneg_left H Hc',
+  have H1 : -c * b ≤ -c * a, from mul_le_mul_of_nonneg_left H Hc',
   have H2 : -(c * b) ≤ -(c * a),
     begin
       rewrite [-*neg_mul_eq_neg_mul at H1],
@@ -265,7 +274,7 @@ section
 
   theorem mul_le_mul_of_nonpos_right (H : b ≤ a) (Hc : c ≤ 0) : a * c ≤ b * c :=
   have Hc' : -c ≥ 0, from iff.mpr !neg_nonneg_iff_nonpos Hc,
-  assert H1 : b * -c ≤ a * -c, from mul_le_mul_of_nonneg_right H Hc',
+  have H1 : b * -c ≤ a * -c, from mul_le_mul_of_nonneg_right H Hc',
   have H2 : -(b * c) ≤ -(a * c),
     begin
       rewrite [-*neg_mul_eq_mul_neg at H1],
@@ -282,7 +291,7 @@ section
 
   theorem mul_lt_mul_of_neg_left (H : b < a) (Hc : c < 0) : c * a < c * b :=
   have Hc' : -c > 0, from iff.mpr !neg_pos_iff_neg Hc,
-  assert H1 : -c * b < -c * a, from mul_lt_mul_of_pos_left H Hc',
+  have H1 : -c * b < -c * a, from mul_lt_mul_of_pos_left H Hc',
   have H2 : -(c * b) < -(c * a),
     begin
       rewrite [-*neg_mul_eq_neg_mul at H1],
@@ -292,7 +301,7 @@ section
 
   theorem mul_lt_mul_of_neg_right (H : b < a) (Hc : c < 0) : a * c < b * c :=
   have Hc' : -c > 0, from iff.mpr !neg_pos_iff_neg Hc,
-  assert H1 : b * -c < a * -c, from mul_lt_mul_of_pos_right H Hc',
+  have H1 : b * -c < a * -c, from mul_lt_mul_of_pos_right H Hc',
   have H2 : -(b * c) < -(a * c),
     begin
       rewrite [-*neg_mul_eq_mul_neg at H1],
@@ -315,7 +324,7 @@ structure linear_ordered_ring [class] (A : Type)
     extends ordered_ring A, linear_strong_order_pair A :=
   (zero_lt_one : lt zero one)
 
-definition linear_ordered_ring.to_linear_ordered_semiring [trans_instance] [reducible]
+definition linear_ordered_ring.to_linear_ordered_semiring [trans_instance]
     [s : linear_ordered_ring A] :
   linear_ordered_semiring A :=
 ⦃ linear_ordered_semiring, s,
@@ -369,7 +378,7 @@ lt.by_cases
         end))
 
 -- Linearity implies no zero divisors. Doesn't need commutativity.
-definition linear_ordered_comm_ring.to_integral_domain [trans_instance] [reducible]
+definition linear_ordered_comm_ring.to_integral_domain [trans_instance]
     [s: linear_ordered_comm_ring A] : integral_domain A :=
 ⦃ integral_domain, s,
   eq_zero_or_eq_zero_of_mul_eq_zero :=
@@ -453,6 +462,11 @@ end
 
 structure decidable_linear_ordered_comm_ring [class] (A : Type) extends linear_ordered_comm_ring A,
     decidable_linear_ordered_comm_group A
+
+definition decidable_linear_ordered_comm_ring.to_decidable_linear_ordered_semiring
+    [trans_instance] [s : decidable_linear_ordered_comm_ring A] :
+  decidable_linear_ordered_semiring A :=
+⦃decidable_linear_ordered_semiring, s, @linear_ordered_ring.to_linear_ordered_semiring A _⦄
 
 section
   variable [s : decidable_linear_ordered_comm_ring A]
@@ -708,6 +722,11 @@ section
     apply zero_lt_one
   end
 
+  lemma eq_zero_of_mul_self_add_mul_self_eq_zero {x y : A} (H : x * x + y * y = 0) : x = 0 :=
+  have x * x ≤ (0 : A), from calc
+    x * x ≤ x * x + y * y : le_add_of_nonneg_right (mul_self_nonneg y)
+      ... = 0             : H,
+  eq_zero_of_mul_self_eq_zero (le.antisymm this (mul_self_nonneg x))
 end
 
 /- TODO: Multiplication and one, starting with mult_right_le_one_le. -/

@@ -72,18 +72,15 @@ wf           [wf]
 in           in
 at           at
 assign       :=
-visible      [visible]
 from         from
 using        using
 then         then
 else         else
 by           by
-by_plus      by+
 rewrite      rewrite
 proof        proof
 qed          qed
 begin        begin
-begin_plus   begin+
 end          end
 private      private
 protected    protected
@@ -101,7 +98,6 @@ unfold_hints_bracket [unfold_hints]
 unfold_hints unfold_hints
 coercion     [coercion]
 reducible    [reducible]
-quasireducible [quasireducible]
 semireducible [semireducible]
 irreducible  [irreducible]
 parsing_only [parsing_only]
@@ -114,6 +110,8 @@ intro_attr      [intro]
 intro_bang_attr [intro!]
 elim_attr    [elim]
 recursor     [recursor
+unify_attr   [unify]
+defeq_attr   [defeq]
 attribute    attribute
 with         with
 class        [class]
@@ -136,7 +134,6 @@ tactic_infixr tactic_infixr
 tactic_postfix tactic_postfix
 tactic_prefix tactic_prefix
 tactic_notation tactic_notation
-call         call
 calc         calc
 obtain       obtain
 root         _root_

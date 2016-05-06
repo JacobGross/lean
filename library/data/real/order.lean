@@ -13,6 +13,9 @@ open rat nat eq pnat
 
 local postfix `⁻¹` := pnat.inv
 
+local attribute real.real_has_zero [instance] [priority real.prio]
+local attribute real.real_has_one [instance] [priority real.prio]
+
 namespace rat_seq
 definition pos (s : seq) := ∃ n : ℕ+, n⁻¹ < (s n)
 
@@ -1023,10 +1026,10 @@ protected definition lt (x y : ℝ) :=
 protected definition le (x y : ℝ) :=
   quot.lift_on₂ x y (λ a b, rat_seq.r_le a b) rat_seq.r_le_well_defined
 
-definition real_has_lt [reducible] [instance] [priority real.prio] : has_lt ℝ :=
+definition real_has_lt [instance] [priority real.prio] : has_lt ℝ :=
 has_lt.mk real.lt
 
-definition real_has_le [reducible] [instance] [priority real.prio] : has_le ℝ :=
+definition real_has_le [instance] [priority real.prio] : has_le ℝ :=
 has_le.mk real.le
 
 definition sep (x y : ℝ) := quot.lift_on₂ x y (λ a b, rat_seq.r_sep a b) rat_seq.r_sep_well_defined
@@ -1089,7 +1092,7 @@ protected theorem le_of_lt_or_eq (x y : ℝ) : x < y ∨ x = y → x ≤ y :=
         apply (or.inr (quot.exact H'))
       end)))
 
-definition ordered_ring [reducible] [instance] : ordered_ring ℝ :=
+definition ordered_ring [trans_instance] : ordered_ring ℝ :=
 ⦃ ordered_ring, real.comm_ring,
   le_refl := real.le_refl,
   le_trans := @real.le_trans,
@@ -1165,8 +1168,23 @@ theorem of_nat_lt_of_nat_of_lt {a b : ℕ} : (a < b) → of_nat a < of_nat b :=
 theorem lt_of_of_nat_lt_of_nat {a b : ℕ} : of_nat a < of_nat b → (a < b) :=
   iff.mp !of_nat_lt_of_nat_iff
 
+theorem of_rat_pos_of_pos {q : ℚ} (Hq : q > 0) : of_rat q > 0 :=
+  of_rat_lt_of_rat_of_lt Hq
+
+theorem of_rat_nonneg_of_nonneg {q : ℚ} (Hq : q ≥ 0) : of_rat q ≥ 0 :=
+  of_rat_le_of_rat_of_le Hq
+
+theorem of_rat_neg_of_neg {q : ℚ} (Hq : q < 0) : of_rat q < 0 :=
+  of_rat_lt_of_rat_of_lt Hq
+
+theorem of_rat_nonpos_of_nonpos {q : ℚ} (Hq : q ≤ 0) : of_rat q ≤ 0 :=
+  of_rat_le_of_rat_of_le Hq
+
 theorem of_nat_nonneg (a : ℕ) : of_nat a ≥ 0 :=
 of_rat_le_of_rat_of_le !rat.of_nat_nonneg
+
+theorem of_nat_succ_pos (k : ℕ) : 0 < of_nat k + 1 :=
+  add_pos_of_nonneg_of_pos (of_nat_nonneg k) real.zero_lt_one
 
 theorem of_rat_pow (a : ℚ) (n : ℕ) : of_rat (a^n) = (of_rat a)^n :=
 begin

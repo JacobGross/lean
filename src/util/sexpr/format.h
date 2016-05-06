@@ -14,7 +14,6 @@ Author: Soonho Kong
 #include <vector>
 #include "util/pair.h"
 #include "util/debug.h"
-#include "util/lua.h"
 #include "util/numerics/mpz.h"
 #include "util/sexpr/sexpr.h"
 
@@ -120,8 +119,7 @@ private:
         return sexpr(sexpr(format::format_kind::LINE), sexpr());
     }
 
-    std::tuple<sexpr, sexpr const *> separate_tokens(sexpr const & s, sexpr const * last,
-                                                     std::function<bool(sexpr const &, sexpr const &)> sep) const; //NOLINT
+    struct separate_tokens_fn;
 
     // Functions used inside of pretty printing
     static bool space_upto_line_break_list_exceeded(sexpr const & s, int available, std::vector<pair<sexpr, unsigned>> const & todo);
@@ -308,9 +306,6 @@ format pp(sexpr const & s);
 
 /** \brief Return true iff \c f1 and \c f2 are equal when formatted with options \c o */
 bool format_pp_eq(format const & f1, format const & f2, options const & o);
-
-UDATA_DEFS(format)
-void open_format(lua_State * L);
 
 void initialize_format();
 void finalize_format();

@@ -12,6 +12,7 @@
 (require 'lean-variable)
 (require 'lean-cmd)
 (require 'lean-info)
+(require 'lean-project)
 (require 'lean-util)
 
 ;; Parameters
@@ -175,6 +176,7 @@
   ;; (message "lean-server-create-process")
   (let* ((type (or type (lean-choose-minor-mode-based-on-extension)))
          (process-connection-type nil)
+         (default-directory (or (lean-project-find-root) default-directory))
          (p (apply 'start-process
                    (append (list (lean-server-process-name type)
                                  (lean-server-buffer-name type)
@@ -492,7 +494,7 @@ If it's not the same with file-name (default: buffer-file-name), send VISIT cmd.
     (setq str-list
           (-take (- (length str-list) 2)
                  (-drop 1 str-list)))
-    (string-join str-list "\n")))
+    (s-join "\n" str-list)))
 
 (defun lean-findp-parse-string (str)
   "Parse the output of findp command."

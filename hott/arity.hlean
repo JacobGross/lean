@@ -35,7 +35,7 @@ namespace eq
         apdi₀i₁...iₙ.
 
       For versions where only some arguments depend on some other arguments,
-      or for versions with transport in the conclusion (like apd), we don't have a
+      or for versions with transport in the conclusion (like apdt), we don't have a
       consistent naming scheme (yet).
 
       We don't prove each theorem systematically, but prove only the ones which we actually need.
@@ -50,9 +50,6 @@ namespace eq
 
   infix ` ~2 `:50 := homotopy2
   infix ` ~3 `:50 := homotopy3
-
-  definition ap011 (f : U → V → W) (Hu : u = u') (Hv : v = v') : f u v = f u' v' :=
-  by cases Hu; congruence; repeat assumption
 
   definition ap0111 (f : U → V → W → X) (Hu : u = u') (Hv : v = v') (Hw : w = w')
       : f u v w = f u' v' w' :=

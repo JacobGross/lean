@@ -99,7 +99,6 @@ branch::branch(branch const & b):
     m_todo_queue(b.m_todo_queue),
     m_forward_deps(b.m_forward_deps),
     m_target(b.m_target),
-    m_target_deps(b.m_target_deps),
     m_hyp_index(b.m_hyp_index) {
     unsigned n = get_extension_manager().get_num_extensions();
     m_extensions = new branch_extension*[n];
@@ -117,7 +116,6 @@ branch::branch(branch && b):
     m_todo_queue(std::move(b.m_todo_queue)),
     m_forward_deps(std::move(b.m_forward_deps)),
     m_target(std::move(b.m_target)),
-    m_target_deps(std::move(b.m_target_deps)),
     m_hyp_index(std::move(b.m_hyp_index)) {
     unsigned n = get_extension_manager().get_num_extensions();
     m_extensions = new branch_extension*[n];
@@ -135,7 +133,6 @@ void branch::swap(branch & b) {
     std::swap(m_hyp_index, b.m_hyp_index);
     std::swap(m_forward_deps, b.m_forward_deps);
     std::swap(m_target, b.m_target);
-    std::swap(m_target_deps, b.m_target_deps);
     std::swap(m_extensions, b.m_extensions);
 }
 
@@ -256,17 +253,34 @@ expr state::to_kernel_expr(expr const & e) const {
     return to_kernel_expr(e, hidx2local, midx2meta);
 }
 
-goal state::to_goal() const {
+static name mk_name(name const & n, name_set & already_used) {
+    name curr    = n;
+    unsigned idx = 1;
+    while (true) {
+        if (!already_used.contains(curr)) {
+            already_used.insert(curr);
+            return curr;
+        }
+        curr = n.append_after(idx);
+        idx++;
+    }
+}
+
+goal state::to_goal(bool include_inactive) const {
     hypothesis_idx_map<expr> hidx2local;
     metavar_idx_map<expr>    midx2meta;
     hypothesis_idx_buffer hidxs;
     get_sorted_hypotheses(hidxs);
     buffer<expr> hyps;
+    name_set already_used;
     for (unsigned hidx : hidxs) {
+        if (!include_inactive && !is_active(hidx)) {
+            break; // inactive hypotheses occur after active ones after sorting
+        }
         hypothesis const & h = get_hypothesis_decl(hidx);
         // after we add support for let-decls in goals, we must convert back h->get_value() if it is available
         expr new_h = lean::mk_local(name(name("H"), hidx),
-                                    h.get_name(),
+                                    mk_name(h.get_name(), already_used),
                                     to_kernel_expr(h.get_type(), hidx2local, midx2meta),
                                     binder_info());
         hidx2local.insert(hidx, new_h);
@@ -289,15 +303,14 @@ void state::display_active(std::ostream & out) const {
     out << "}\n";
 }
 
-void state::display(io_state_stream const & ios) const {
-    ios << mk_pair(to_goal().pp(ios.get_formatter()), ios.get_options()) << "\n";
+void state::display(io_state_stream const & ios, bool include_inactive) const {
+    ios << mk_pair(to_goal(include_inactive).pp(ios.get_formatter()), ios.get_options()) << "\n";
 }
 
-void state::display(environment const & env, io_state const & ios) const {
-    formatter fmt = ios.get_formatter_factory()(env, ios.get_options());
+void state::display(environment const & env, io_state const & ios, bool include_inactive) const {
+    formatter fmt = ios.get_formatter_factory()(env, ios.get_options(), get_type_context());
     auto & out = ios.get_diagnostic_channel();
-    out << mk_pair(to_goal().pp(fmt), ios.get_options()) << "\n";
-    display_active(out.get_stream());
+    out << mk_pair(to_goal(include_inactive).pp(fmt), ios.get_options()) << "\n";
 }
 
 bool state::has_assigned_uref(level const & l) const {
@@ -385,15 +398,15 @@ struct instantiate_urefs_mrefs_fn : public replace_visitor {
                          [](level const & l1, level const & l2) { return is_eqp(l1, l2); });
     }
 
-    virtual expr visit_sort(expr const & s) {
+    virtual expr visit_sort(expr const & s) override {
         return update_sort(s, visit_level(sort_level(s)));
     }
 
-    virtual expr visit_constant(expr const & c) {
+    virtual expr visit_constant(expr const & c) override {
         return update_constant(c, visit_levels(const_levels(c)));
     }
 
-    virtual expr visit_local(expr const & e) {
+    virtual expr visit_local(expr const & e) override {
         if (is_href(e)) {
             return e;
         } else {
@@ -401,7 +414,7 @@ struct instantiate_urefs_mrefs_fn : public replace_visitor {
         }
     }
 
-    virtual expr visit_meta(expr const & m) {
+    virtual expr visit_meta(expr const & m) override {
         lean_assert(is_mref(m));
         if (auto v1 = m_state.get_mref_assignment(m)) {
             if (!has_mref(*v1)) {
@@ -417,7 +430,7 @@ struct instantiate_urefs_mrefs_fn : public replace_visitor {
         }
     }
 
-    virtual expr visit_app(expr const & e) {
+    virtual expr visit_app(expr const & e) override {
         buffer<expr> args;
         expr const & f = get_app_rev_args(e, args);
         if (is_mref(f)) {
@@ -444,7 +457,7 @@ struct instantiate_urefs_mrefs_fn : public replace_visitor {
             return mk_rev_app(new_f, new_args, e.get_tag());
     }
 
-    virtual expr visit_macro(expr const & e) {
+    virtual expr visit_macro(expr const & e) override {
         lean_assert(is_macro(e));
         buffer<expr> new_args;
         for (unsigned i = 0; i < macro_num_args(e); i++)
@@ -452,7 +465,7 @@ struct instantiate_urefs_mrefs_fn : public replace_visitor {
         return update_macro(e, new_args.size(), new_args.data());
     }
 
-    virtual expr visit(expr const & e) {
+    virtual expr visit(expr const & e) override {
         if (!has_mref(e) && !has_univ_metavar(e))
             return e;
         else
@@ -518,9 +531,21 @@ struct hypothesis_dep_depth_lt {
     bool operator()(unsigned hidx1, unsigned hidx2) const {
         hypothesis const & h1 = m_state.get_hypothesis_decl(hidx1);
         hypothesis const & h2 = m_state.get_hypothesis_decl(hidx2);
-        return
-            h1.get_dep_depth() < h2.get_dep_depth() &&
-            (h1.get_dep_depth() == h2.get_dep_depth() && hidx1 < hidx2);
+        bool act1             = true; // m_state.is_active(hidx1);
+        bool act2             = true; // m_state.is_active(hidx2);
+        if (act1 != act2) {
+            return act1 && !act2; // active hypotheses should occur before non-active ones
+        } else if (act1) {
+            lean_assert(act1 && act2);
+            if (h1.get_dep_depth() != h2.get_dep_depth())
+                return h1.get_dep_depth() < h2.get_dep_depth();
+            else
+                return hidx1 < hidx2;
+        } else {
+            // for inactive hypotheses we just compare hidx's
+            lean_assert(!act1 && !act2);
+            return hidx1 < hidx2;
+        }
     }
 };
 
@@ -593,6 +618,10 @@ void state::add_deps(expr const & e, hypothesis & h_user, unsigned hidx_user) {
 
 void state::add_deps(hypothesis & h_user, unsigned hidx_user) {
     add_deps(h_user.m_type, h_user, hidx_user);
+}
+
+bool state::has_target_forward_deps(hypothesis_idx hidx) const {
+    return has_forward_deps(hidx) || target_depends_on(hidx);
 }
 
 double state::compute_weight(unsigned hidx, expr const & /* type */) {
@@ -679,25 +708,13 @@ void state::collect_forward_deps(hypothesis_idx hidx, hypothesis_idx_buffer_set 
     }
 }
 
-/* Return true iff the target type does not depend on any of the hypotheses in to_delete */
-bool state::safe_to_delete(buffer<hypothesis_idx> const & to_delete) {
-    for (hypothesis_idx h : to_delete) {
-        if (m_branch.m_target_deps.contains(h)) {
-            // h cannot be deleted since the target type
-            // depends on it.
-            return false;
-        }
-    }
-    return true;
-}
-
 bool state::del_hypotheses(buffer<hypothesis_idx> const & hs) {
     hypothesis_idx_buffer_set to_delete;
     for (hypothesis_idx hidx : hs) {
         to_delete.insert(hidx);
         collect_forward_deps(hidx, to_delete);
     }
-    if (!safe_to_delete(to_delete.as_buffer()))
+    if (target_depends_on(to_delete.as_buffer()))
         return false;
     del_hypotheses(to_delete.as_buffer(), to_delete.as_set());
     return true;
@@ -707,7 +724,7 @@ bool state::del_hypothesis(hypothesis_idx hidx) {
     hypothesis_idx_buffer_set to_delete;
     to_delete.insert(hidx);
     collect_forward_deps(hidx, to_delete);
-    if (!safe_to_delete(to_delete.as_buffer()))
+    if (target_depends_on(to_delete.as_buffer()))
         return false;
     del_hypotheses(to_delete.as_buffer(), to_delete.as_set());
     return true;
@@ -788,6 +805,16 @@ static expr get_key_for(expr type) {
     return type;
 }
 
+static bool use_discr_tree(expr const & type) {
+    /*
+      Discrimination tree does not have support for Pi-expressions. They are treated as a black-box in the
+      discrimination tree module.
+      TODO(Leo): it is feasible to handle arrows in the discr_tree module. We should
+      add support for that in the future.
+    */
+    return !is_pi(type);
+}
+
 void state::update_indices(hypothesis_idx hidx) {
     hypothesis const & h = get_hypothesis_decl(hidx);
     unsigned n = get_extension_manager().get_num_extensions();
@@ -795,7 +822,19 @@ void state::update_indices(hypothesis_idx hidx) {
         branch_extension * ext = get_extension_core(i);
         if (ext) ext->hypothesis_activated(h, hidx);
     }
-    m_branch.m_hyp_index.insert(get_key_for(h.get_type()), h.get_self());
+    expr k = get_key_for(h.get_type());
+    if (use_discr_tree(k)) {
+        m_branch.m_hyp_index.insert(k, h.get_self());
+    } else {
+        /*
+          TODO(Leo): add some support for indexing Pi-expressions.
+          We currently miss basic inconsistencies such as `forall x, P x` and `not forall x, P x`.
+          When classical support is enabled, we can workaround it, but converting
+          `not forall x : A, P x` into `exists x : A, not P x`, eliminating the exists and get new hypotheses
+                     a : A, h : not P a
+          Then, instantiate `forall x, P x` with `a` and get the contradiction.
+        */
+    }
 }
 
 void state::remove_from_indices(hypothesis const & h, hypothesis_idx hidx) {
@@ -804,11 +843,21 @@ void state::remove_from_indices(hypothesis const & h, hypothesis_idx hidx) {
         branch_extension * ext = get_extension_core(i);
         if (ext) ext->hypothesis_deleted(h, hidx);
     }
-    m_branch.m_hyp_index.erase(get_key_for(h.get_type()), h.get_self());
+    expr k = get_key_for(h.get_type());
+    if (use_discr_tree(k)) {
+        m_branch.m_hyp_index.erase(get_key_for(h.get_type()), h.get_self());
+    } else {
+        // TODO(Leo): add some support for indexing Pi-expressions
+    }
 }
 
 void state::find_hypotheses(expr const & e, std::function<bool(hypothesis_idx)> const & fn) const { // NOLINT
-    m_branch.m_hyp_index.find(get_key_for(e), [&](expr const & h) { return fn(href_index(h)); });
+    expr k = get_key_for(e);
+    if (use_discr_tree(k)) {
+        m_branch.m_hyp_index.find(k, [&](expr const & h) { return fn(href_index(h)); });
+    } else {
+        // TODO(Leo): add some support for indexing Pi-expressions
+    }
 }
 
 optional<unsigned> state::select_hypothesis_to_activate() {
@@ -826,7 +875,7 @@ optional<unsigned> state::select_hypothesis_to_activate() {
 void state::activate_hypothesis(hypothesis_idx hidx) {
     lean_trace_search(
         hypothesis const & h = get_hypothesis_decl(hidx);
-        tout() << "activate " << h.get_name() << " : " << ppb(h.get_type()) << "\n";);
+        tout() << "activate " << h.get_name() << " : " << h.get_type() << "\n";);
     lean_assert(!get_hypothesis_decl(hidx).is_dead());
     m_branch.m_active.insert(hidx);
     update_indices(hidx);
@@ -842,24 +891,32 @@ bool state::hidx_depends_on(unsigned hidx_user, unsigned hidx_provider) const {
 
 void state::set_target(expr const & t) {
     m_branch.m_target = t;
-    m_branch.m_target_deps.clear();
-    if (has_href(t) || has_mref(t)) {
-        for_each(t, [&](expr const & e, unsigned) {
-                if (!has_href(e) && !has_mref(e)) {
-                    return false;
-                } else if (is_href(e)) {
-                    m_branch.m_target_deps.insert(href_index(e));
-                    return false;
-                } else {
-                    return true;
-                }
-            });
-    }
     unsigned n = get_extension_manager().get_num_extensions();
     for (unsigned i = 0; i < n; i++) {
         branch_extension * ext = get_extension_core(i);
         if (ext) ext->target_updated();
     }
+}
+
+bool state::target_depends_on(buffer<hypothesis_idx> const & hidxs) const {
+    bool found_href = false;
+    for_each(m_branch.m_target, [&](expr const & e, unsigned) {
+            if (found_href) return false;
+            if (!has_local(e)) return false;
+            if (is_href(e)) {
+                if (std::find(hidxs.begin(), hidxs.end(), href_index(e)) != hidxs.end())
+                    found_href = true;
+                return false;
+            }
+            return true; // continue;
+        });
+    return found_href;
+}
+
+bool state::target_depends_on(hypothesis_idx hidx) const {
+    buffer<hypothesis_idx> hidxs;
+    hidxs.push_back(hidx);
+    return target_depends_on(hidxs);
 }
 
 bool state::target_depends_on(expr const & h) const {
@@ -873,7 +930,7 @@ struct expand_hrefs_fn : public replace_visitor {
     expand_hrefs_fn(state const & s, list<expr> const & hrefs):
         m_state(s), m_hrefs(hrefs) {}
 
-    virtual expr visit_local(expr const & e) {
+    virtual expr visit_local(expr const & e) override {
         if (is_href(e) && std::find(m_hrefs.begin(), m_hrefs.end(), e) != m_hrefs.end()) {
             hypothesis const & h = m_state.get_hypothesis_decl(e);
             if (h.get_value()) {

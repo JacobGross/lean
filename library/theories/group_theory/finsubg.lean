@@ -19,6 +19,7 @@ open ops
 section subg
 -- we should be able to prove properties using finsets directly
 variables {G : Type} [group G]
+variable [decidable_eq G]
 
 definition finset_mul_closed_on [reducible] (H : finset G) : Prop :=
            ∀ x y : G, x ∈ H → y ∈ H → x * y ∈ H
@@ -33,19 +34,17 @@ structure is_finsubg [class] (H : finset G) : Type :=
 definition univ_is_finsubg [instance] [finG : fintype G] : is_finsubg (@finset.univ G _) :=
 is_finsubg.mk !mem_univ (λ x y Px Py, !mem_univ) (λ a Pa, !mem_univ)
 
-definition one_is_finsubg [instance] : is_finsubg (singleton (1:G)) :=
+definition one_is_finsubg [instance] : is_finsubg ('{(1:G)}) :=
 is_finsubg.mk !mem_singleton
   (λ x y Px Py, by rewrite [eq_of_mem_singleton Px, eq_of_mem_singleton Py, one_mul]; apply mem_singleton)
   (λ x Px, by rewrite [eq_of_mem_singleton Px, one_inv]; apply mem_singleton)
 
 lemma finsubg_has_one (H : finset G) [h : is_finsubg H] : 1 ∈ H :=
-      @is_finsubg.has_one G _ H h
+      @is_finsubg.has_one G _ _ H h
 lemma finsubg_mul_closed (H : finset G) [h : is_finsubg H] {x y : G} : x ∈ H → y ∈ H → x * y ∈ H :=
-      @is_finsubg.mul_closed G _ H h x y
+      @is_finsubg.mul_closed G _ _ H h x y
 lemma finsubg_has_inv (H : finset G) [h : is_finsubg H] {a : G} :  a ∈ H → a⁻¹ ∈ H :=
-      @is_finsubg.has_inv G _ H h a
-
-variable [decidable_eq G]
+      @is_finsubg.has_inv G _ _ H h a
 
 definition finsubg_to_subg [instance] {H : finset G} [h : is_finsubg H]
          : is_subgroup (ts H) :=
@@ -58,10 +57,10 @@ definition finsubg_to_subg [instance] {H : finset G} [h : is_finsubg H]
 
 open nat
 lemma finsubg_eq_singleton_one_of_card_one {H : finset G} [h : is_finsubg H] :
-  card H = 1 → H = singleton 1 :=
+  card H = 1 → H = '{1} :=
 assume Pcard, eq.symm (eq_of_card_eq_of_subset (by rewrite [Pcard])
   (subset_of_forall take g,
-    by rewrite [mem_singleton_eq]; intro Pg; rewrite Pg; exact finsubg_has_one H))
+    by rewrite [mem_singleton_iff]; intro Pg; rewrite Pg; exact finsubg_has_one H))
 
 end subg
 
@@ -86,7 +85,7 @@ funext take c, calc a*(c*b) = (a*c)*b : mul.assoc
 
 lemma fin_lrcoset_comm {a b : A} :
   fin_lcoset (fin_rcoset H b) a = fin_rcoset (fin_lcoset H a) b :=
-by esimp [fin_lcoset, fin_rcoset]; rewrite [-*image_compose, lmul_rmul]
+by esimp [fin_lcoset, fin_rcoset]; rewrite [-*image_comp, lmul_rmul]
 
 lemma inv_mem_fin_inv {a : A} : a ∈ H → a⁻¹ ∈ fin_inv H :=
 assume Pin, mem_image Pin rfl
@@ -121,12 +120,12 @@ lemma fin_lcoset_same (x a : A) : x ∈ (fin_lcoset H a) = (fin_lcoset H x = fin
       end
 lemma fin_mem_lcoset (g : A) : g ∈ fin_lcoset H g :=
       have P : g ∈ g ∘> ts H, from and.left (subg_in_coset_refl g),
-      assert P1 : g ∈ ts (fin_lcoset H g), from eq.symm (fin_lcoset_eq g) ▸ P,
+      have P1 : g ∈ ts (fin_lcoset H g), from eq.symm (fin_lcoset_eq g) ▸ P,
       eq.symm (mem_eq_mem_to_set _ g) ▸ P1
 lemma fin_lcoset_subset {S : finset A} (Psub : S ⊆ H) : ∀ x, x ∈ H → fin_lcoset S x ⊆ H :=
-      assert Psubs : set.subset (ts S) (ts H), from subset_eq_to_set_subset S H ▸ Psub,
+      have Psubs : set.subset (ts S) (ts H), from subset_eq_to_set_subset S H ▸ Psub,
       take x, assume Pxs : x ∈ ts H,
-      assert Pcoset : set.subset (x ∘> ts S) (ts H), from subg_lcoset_subset_subg Psubs x Pxs,
+      have Pcoset : set.subset (x ∘> ts S) (ts H), from subg_lcoset_subset_subg Psubs x Pxs,
       by rewrite [subset_eq_to_set_subset, fin_lcoset_eq x]; exact Pcoset
 
 lemma finsubg_lcoset_id {a : A} : a ∈ H → fin_lcoset H a = H :=
@@ -136,9 +135,9 @@ lemma finsubg_inv_lcoset_eq_rcoset {a : A} :
   fin_inv (fin_lcoset H a) = fin_rcoset H a⁻¹ :=
 begin
   esimp [fin_inv, fin_lcoset, fin_rcoset],
-  rewrite [-image_compose],
+  rewrite [-image_comp],
   apply ext, intro b,
-  rewrite [*mem_image_iff, ↑compose, ↑lmul_by, ↑rmul_by],
+  rewrite [*mem_image_iff, ↑comp, ↑lmul_by, ↑rmul_by],
   apply iff.intro,
     intro Pl, cases Pl with h Ph, cases Ph with Pin Peq,
     existsi h⁻¹, apply and.intro,
@@ -262,7 +261,7 @@ ext (take S, iff.intro
 lemma length_all_lcosets : length (all_lcosets G H) = card (fin_lcosets H G) :=
 eq.trans
   (show length (all_lcosets G H) = length (list_lcosets G H), from
-    assert Pmap : map elt_of (all_lcosets G H) = list_lcosets G H, from
+    have Pmap : map elt_of (all_lcosets G H) = list_lcosets G H, from
       map_dmap_of_inv_of_pos (λ S P, rfl) (λ S, is_lcoset_of_mem_list_lcosets),
     by rewrite[-Pmap, length_map])
   (by rewrite fin_lcosets_eq)
@@ -410,9 +409,11 @@ obtain j Pjin Pj, from has_property J,
 obtain k Pkin Pk, from has_property K,
 Union_const (lcoset_not_empty J) begin
   rewrite [-Pk], intro h Phin,
-  assert Phinn : h ∈ normalizer H,
-    apply mem_of_subset_of_mem (lcoset_subset_normalizer_of_mem Pjin),
-    rewrite Pj, assumption,
+  have Phinn : h ∈ normalizer H,
+    begin
+      apply mem_of_subset_of_mem (lcoset_subset_normalizer_of_mem Pjin),
+      rewrite Pj, assumption
+    end,
   revert Phin Pgin,
   rewrite [-Pj, *fin_lcoset_same],
   intro Pheq Pgeq,
@@ -455,7 +456,7 @@ lemma fin_coset_mul_assoc (J K L : lcoset_type (normalizer H) H) :
   J ^ K ^ L = J ^ (K ^ L) :=
 obtain j Pjin Pj, from exists_of_lcoset_type J,
 obtain k Pkin Pk, from exists_of_lcoset_type K,
-assert Pjk : j*k ∈ elt_of (J ^ K), from mul_mem_lcoset_mul J K Pjin Pkin,
+have Pjk : j*k ∈ elt_of (J ^ K), from mul_mem_lcoset_mul J K Pjin Pkin,
 obtain l Plin Pl, from has_property L,
 subtype.eq (begin
   rewrite [fin_coset_mul_eq_lcoset (J ^ K) _ Pjk,
@@ -480,7 +481,7 @@ end
 lemma fin_coset_left_inv (J : lcoset_type (normalizer H) H) :
   (fin_coset_inv J) ^ J = fin_coset_one :=
 obtain j Pjin Pj, from exists_of_lcoset_type J,
-assert Pjinv : j⁻¹ ∈ elt_of (fin_coset_inv J), from inv_mem_fin_inv Pjin,
+have Pjinv : j⁻¹ ∈ elt_of (fin_coset_inv J), from inv_mem_fin_inv Pjin,
 subtype.eq begin
   rewrite [↑fin_coset_one, fin_coset_mul_eq_lcoset _ _ Pjinv, -Pj, fin_lcoset_inv]
 end
@@ -515,7 +516,7 @@ lemma fcU_mul_closed : finset_mul_closed_on (fin_coset_Union Hc) :=
 take j k, assume Pjin Pkin,
 obtain J PJ PjJ, from iff.elim_left !mem_Union_iff Pjin,
 obtain K PK PkK, from iff.elim_left !mem_Union_iff Pkin,
-assert Pjk : j*k ∈ elt_of (J*K), from mul_mem_lcoset_mul J K PjJ PkK,
+have Pjk : j*k ∈ elt_of (J*K), from mul_mem_lcoset_mul J K PjJ PkK,
 iff.elim_right !mem_Union_iff
   (exists.intro (J*K) (and.intro (finsubg_mul_closed Hc PJ PK) Pjk))
 

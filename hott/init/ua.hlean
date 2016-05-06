@@ -8,7 +8,7 @@ Ported from Coq HoTT
 
 prelude
 import .equiv
-open eq equiv is_equiv equiv.ops
+open eq equiv is_equiv
 
 --Ensure that the types compared are in the same universe
 section
@@ -48,6 +48,12 @@ ap to_fun (equiv_of_eq_ua f)
 definition cast_ua {A B : Type} (f : A ≃ B) (a : A) : cast (ua f) a = f a :=
 ap10 (cast_ua_fn f) a
 
+definition cast_ua_inv_fn {A B : Type} (f : A ≃ B) : cast (ua f)⁻¹ = to_inv f :=
+ap to_inv (equiv_of_eq_ua f)
+
+definition cast_ua_inv {A B : Type} (f : A ≃ B) (b : B) : cast (ua f)⁻¹ b = to_inv f b :=
+ap10 (cast_ua_inv_fn f) b
+
 definition ua_equiv_of_eq [reducible] {A B : Type} (p : A = B) : ua (equiv_of_eq p) = p :=
 left_inv equiv_of_eq p
 
@@ -55,8 +61,6 @@ definition eq_of_equiv_lift {A B : Type} (f : A ≃ B) : A = lift B :=
 ua (f ⬝e !equiv_lift)
 
 namespace equiv
-  definition ua_refl (A : Type) : ua erfl = idpath A :=
-  eq_of_fn_eq_fn !eq_equiv_equiv (right_inv !eq_equiv_equiv erfl)
 
   -- One consequence of UA is that we can transport along equivalencies of types
   -- We can use this for calculation evironments
@@ -83,5 +87,21 @@ namespace equiv
   definition rec_on_ua_idp' {A : Type} {P : Π{B}, A ≃ B → A = B → Type} {B : Type}
     (f : A ≃ B) (H : P equiv.refl idp) : P f (ua f) :=
   rec_on_ua' f (λq, eq.rec_on q H)
+
+  definition ua_refl (A : Type) : ua erfl = idpath A :=
+  eq_of_fn_eq_fn !eq_equiv_equiv (right_inv !eq_equiv_equiv erfl)
+
+  definition ua_symm {A B : Type} (f : A ≃ B) : ua f⁻¹ᵉ = (ua f)⁻¹ :=
+  begin
+    apply rec_on_ua_idp f,
+    refine !ua_refl ⬝ inverse2 !ua_refl⁻¹
+  end
+
+  definition ua_trans {A B C : Type} (f : A ≃ B) (g : B ≃ C) : ua (f ⬝e g) = ua f ⬝ ua g :=
+  begin
+    apply rec_on_ua_idp g, apply rec_on_ua_idp f,
+    refine !ua_refl ⬝ concat2 !ua_refl⁻¹ !ua_refl⁻¹
+  end
+
 
 end equiv

@@ -422,10 +422,10 @@ theorem inv_well_defined {s t : seq} (Hs : regular s) (Ht : regular t) (Heq : s 
        apply one_is_reg
      end)
   else
-    (assert H : s_inv Hs = zero, from funext (λ n, dif_neg Hsep),
+    (have H : s_inv Hs = zero, from funext (λ n, dif_neg Hsep),
      have Hsept : ¬ sep t zero, from
        assume H', Hsep (sep_of_equiv_sep Ht Hs (equiv.symm _ _ Heq) H'),
-     assert H' : s_inv Ht = zero, from funext (λ n, dif_neg Hsept),
+     have H' : s_inv Ht = zero, from funext (λ n, dif_neg Hsept),
      by rewrite [H', H]; apply equiv.refl)
 
 theorem s_neg_neg {s : seq} : sneg (sneg s) ≡ s :=
@@ -545,7 +545,7 @@ theorem s_le_of_equiv_le_right {s t u : seq} (Hs : regular s) (Ht : regular t) (
 
 noncomputable definition r_inv (s : reg_seq) : reg_seq := reg_seq.mk (s_inv (reg_seq.is_reg s))
   (if H : sep (reg_seq.sq s) zero then reg_inv_reg (reg_seq.is_reg s) H else
-    assert Hz : s_inv (reg_seq.is_reg s) = zero, from funext (λ n, dif_neg H),
+    have Hz : s_inv (reg_seq.is_reg s) = zero, from funext (λ n, dif_neg H),
     by rewrite Hz; apply zero_is_reg)
 
 theorem r_inv_zero : requiv (r_inv r_zero) r_zero :=
@@ -587,14 +587,16 @@ noncomputable protected definition inv (x : ℝ) : ℝ :=
   quot.lift_on x (λ a, quot.mk (rat_seq.r_inv a))
            (λ a b H, quot.sound (rat_seq.r_inv_well_defined H))
 
-noncomputable definition real_has_inv [instance] [reducible] [priority real.prio] : has_inv real :=
+noncomputable definition real_has_inv [instance] [priority real.prio] : has_inv real :=
   has_inv.mk real.inv
 
 noncomputable protected definition div (x y : ℝ) : ℝ :=
   x * y⁻¹
 
-noncomputable definition real_has_div [instance] [reducible] [priority real.prio] : has_div real :=
+noncomputable definition real_has_div : has_div real :=
   has_div.mk real.div
+
+local attribute real_has_div [instance] [priority real.prio]
 
 protected theorem le_total (x y : ℝ) : x ≤ y ∨ y ≤ x :=
   quot.induction_on₂ x y (λ s t, rat_seq.r_le_total s t)
@@ -637,7 +639,7 @@ noncomputable definition dec_lt : decidable_rel real.lt :=
     apply prop_decidable
   end
 
-protected noncomputable definition discrete_linear_ordered_field [reducible] [trans_instance]:
+protected noncomputable definition discrete_linear_ordered_field [trans_instance]:
   discrete_linear_ordered_field ℝ :=
   ⦃ discrete_linear_ordered_field, real.comm_ring, real.ordered_ring,
     le_total        := real.le_total,
@@ -648,10 +650,6 @@ protected noncomputable definition discrete_linear_ordered_field [reducible] [tr
     le_iff_lt_or_eq := real.le_iff_lt_or_eq,
     decidable_lt    := dec_lt
    ⦄
-
-theorem of_rat_zero : of_rat (0:rat) = (0:real) := rfl
-
-theorem of_rat_one : of_rat (1:rat) = (1:real) := rfl
 
 theorem of_rat_divide (x y : ℚ) : of_rat (x / y) = of_rat x / of_rat y :=
 by_cases
@@ -682,8 +680,8 @@ theorem eq_zero_of_nonneg_of_forall_le {x : ℝ} (xnonneg : x ≥ 0) (H : ∀ ε
   x = 0 :=
 have ∀ ε : ℝ, ε > 0 → x < ε, from
   take ε, suppose ε > 0,
-  assert e2pos : ε / 2 > 0, from div_pos_of_pos_of_pos `ε > 0` two_pos,
-  assert ε / 2 < ε, from div_two_lt_of_pos `ε > 0`,
+  have e2pos : ε / 2 > 0, from div_pos_of_pos_of_pos `ε > 0` two_pos,
+  have ε / 2 < ε, from div_two_lt_of_pos `ε > 0`,
   begin apply lt_of_le_of_lt, apply H _ e2pos, apply this end,
 eq_zero_of_nonneg_of_forall_lt xnonneg this
 

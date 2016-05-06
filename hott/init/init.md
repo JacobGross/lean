@@ -9,7 +9,6 @@ Syntax declarations:
 
 * [reserved_notation](reserved_notation.hlean)
 * [tactic](tactic.hlean)
-* [priority](priority.hlean)
 
 Datatypes and logic:
 
@@ -20,14 +19,16 @@ Datatypes and logic:
 * [nat](nat.hlean)
 * [function](function.hlean)
 * [types](types.hlean) (notation and some theorems for the remaining basic types)
+* [connectives](connectives.hlean)
 
 HoTT basics:
 
 * [path](path.hlean)
-* [pathover](pathover.hlean) 
+* [pathover](pathover.hlean)
 * [hedberg](hedberg.hlean)
 * [trunc](trunc.hlean)
 * [equiv](equiv.hlean)
+* [pointed](pointed.hlean)
 * [ua](ua.hlean) (declaration of the univalence axiom, and some basic properties)
 * [funext](funext.hlean) (proof of equivalence of certain notions of function exensionality, and a proof that function extensionality follows from univalence)
 

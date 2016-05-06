@@ -5,9 +5,13 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Leonardo de Moura
 */
 #pragma once
+#include <functional>
 #include <memory>
 #include <vector>
+#include "util/fresh_name.h"
+#include "util/scoped_map.h"
 #include "kernel/environment.h"
+#include "kernel/abstract_type_context.h"
 #include "library/io_state.h"
 #include "library/io_state_stream.h"
 #include "library/projection.h"
@@ -16,35 +20,9 @@ namespace lean {
 unsigned get_class_instance_max_depth(options const & o);
 bool get_class_trans_instances(options const & o);
 
-/** \brief Many procedures need to create temporary local constants.
-    So, in the type_context class we provide this capability.
-    It is just a convenience, and allows many procedures to have a simpler
-    interface. Example: no need to take a type_context AND a name_generator.
-    However, in some procedures (e.g., simplifier) use multiple type_context
-    objects, and they want to make sure the local constants created by them
-    are distinct. So, we can accomplish that by providing the same
-    tmp_local_generator to different type_context objects. */
-class tmp_local_generator {
-    unsigned m_next_local_idx;
-    name mk_fresh_name();
-public:
-    tmp_local_generator();
-    virtual ~tmp_local_generator() {}
+/** \brief Type inference, normalization and definitional equality.
+    It is similar to the kernel type checker but it also supports unification variables.
 
-    /** \brief Create a temporary local constant */
-    virtual expr mk_tmp_local(expr const & type, binder_info const & bi);
-
-    /** \brief Create a temporary local constant using the given pretty print name.
-        The pretty printing name has not semantic significance. */
-    virtual expr mk_tmp_local(name const & pp_name, expr const & type, binder_info const & bi);
-
-    /** \brief Return true if \c e was created using \c mk_tmp_local */
-    virtual bool is_tmp_local(expr const & e) const;
-};
-
-/** \brief Light-weight type inference, normalization and definitional equality.
-    It is simpler and more efficient version of the kernel type checker.
-    It does not generate unification constraints.
     Unification problems are eagerly solved. However, only higher-order patterns
     are supported.
 
@@ -80,7 +58,7 @@ public:
 
        These simultaneous unification problem cannot be solved.
 
-    In the elaborator, we address the issues above by making sure that
+    In the Lean 0.2 elaborator, we addressed the issues above by making sure that
     only *closed terms* (terms not containing local constants)
     can be assigned to metavariables. So a metavariable that occurs in a
     context records the parameters it depends on. For example, we
@@ -101,7 +79,7 @@ public:
 
     Which has the solution ?m := fun x, x
 
-    The solution used in the elaborator is correct, but it may produce performance problems
+    The solution used in the Lean 0.2 elaborator is correct, but it may produce performance problems
     for procedures that have to create many meta-variables and the context is not small.
     For example, if the context contains N declarations, then the type of each meta-variable
     created will have N-nested Pi's.
@@ -130,17 +108,15 @@ public:
         2- (all temporary local constants created by auxiliary procedure)    Example: simplifier goes inside of a lambda.
         3- (all internal local constants created by type_context)            Example: when processing is_def_eq.
 */
-class type_context {
+class type_context : public abstract_type_context {
     struct ext_ctx;
     friend struct ext_ctx;
     environment                     m_env;
-    name_generator                  m_ngen;
     std::unique_ptr<ext_ctx>        m_ext_ctx;
-    tmp_local_generator *           m_local_gen;
-    bool                            m_local_gen_owner;
     // postponed universe constraints
     std::vector<pair<level, level>> m_postponed;
     name_map<projection_info>       m_proj_info;
+    bool                            m_in_is_def_eq{false};
 
     // Internal (configuration) options for customers
 
@@ -184,13 +160,20 @@ class type_context {
         We use it when inferring types and we want to be sure a type is Pi-type. */
     bool                            m_relax_is_opaque;
 
+    typedef scoped_map<expr, expr, expr_hash, std::equal_to<expr>> infer_cache;
+    infer_cache m_infer_cache;
+
+    typedef std::unordered_map<name, optional<declaration>, name_hash> is_transparent_cache;
+    is_transparent_cache m_is_transparent_cache[2];
+
     bool is_opaque(declaration const & d) const;
+    optional<declaration> is_transparent(name const & n);
     optional<expr> reduce_projection(expr const & e);
     optional<expr> norm_ext(expr const & e);
     expr whnf_core(expr const & e);
     expr unfold_name_core(expr e, unsigned h);
     expr unfold_names(expr const & e, unsigned h);
-    optional<declaration> is_delta(expr const & e) const;
+    optional<declaration> is_delta(expr const & e);
     expr whnf_core(expr e, unsigned h);
 
     lbool quick_is_def_eq(level const & l1, level const & l2);
@@ -269,26 +252,30 @@ class type_context {
         void commit() { m_keep = true; }
     };
 
-    pos_info_provider const *     m_pip;
-    std::vector<pair<name, expr>> m_ci_local_instances;
-    expr_struct_map<expr>         m_ci_cache;
-    bool                          m_ci_multiple_instances;
-    expr                          m_ci_main_mvar;
-    ci_state                      m_ci_state;    // active state
-    std::vector<ci_choice>        m_ci_choices;
-    unsigned                      m_ci_choices_ini_sz;
-    bool                          m_ci_displayed_trace_header;
-    optional<pos_info>            m_ci_pos;
+    pos_info_provider const *       m_pip;
+    std::vector<pair<name, expr>>   m_ci_local_instances;
+    expr_struct_map<optional<expr>> m_ci_cache;
+    bool                            m_ci_multiple_instances;
+    expr                            m_ci_main_mvar;
+    ci_state                        m_ci_state;    // active state
+    std::vector<ci_choice>          m_ci_choices;
+    unsigned                        m_ci_choices_ini_sz;
+    bool                            m_ci_displayed_trace_header;
+    optional<pos_info>              m_ci_pos;
+
+    /* subsingleton instance cache, we also cache failures */
+    expr_struct_map<optional<expr>> m_ss_cache;
 
     // configuration options
-    unsigned                      m_ci_max_depth;
-    bool                          m_ci_trans_instances;
-    bool                          m_ci_trace_instances;
+    unsigned                        m_ci_max_depth;
+    bool                            m_ci_trans_instances;
+    bool                            m_ci_trace_instances;
 
     optional<name> constant_is_class(expr const & e);
     optional<name> is_full_class(expr type);
     lbool is_quick_class(expr const & type, name & result);
 
+    optional<pair<expr, expr>> find_unsynth_metavar_at_args(expr const & e);
     optional<pair<expr, expr>> find_unsynth_metavar(expr const & e);
 
     expr mk_internal_local(name const & n, expr const & type, binder_info const & bi = binder_info());
@@ -316,21 +303,14 @@ class type_context {
     optional<expr> mk_nested_instance(expr const & type);
     bool mk_nested_instance(expr const & m, expr const & m_type);
     optional<expr> mk_class_instance_core(expr const & type);
-    optional<expr> check_ci_cache(expr const & type) const;
-    void cache_ci_result(expr const & type, expr const & inst);
-    type_context(environment const & env, options const & o, tmp_local_generator * gen,
-                 bool gen_owner, bool multiple_instances);
+    void cache_ci_result(expr const & type, optional<expr> const & inst);
 public:
-    type_context(environment const & env, options const & o, bool multiple_instances = false):
-        type_context(env, o, new tmp_local_generator(), true, multiple_instances) {}
-    type_context(environment const & env, options const & o, tmp_local_generator & gen,
-                 bool multiple_instances = false):
-        type_context(env, o, &gen, false, multiple_instances) {}
+    type_context(environment const & env, options const & o, bool multiple_instances = false);
     virtual ~type_context();
 
     void set_local_instances(list<expr> const & insts);
 
-    environment const & env() const { return m_env; }
+    virtual environment const & env() const override { return m_env; }
 
     /** \brief Opaque constants are never unfolded by this procedure.
         The is_def_eq method will lazily unfold non-opaque constants.
@@ -346,15 +326,11 @@ public:
     bool is_internal_local(expr const & e) const;
 
     /** \brief Create a temporary local constant */
-    expr mk_tmp_local(expr const & type, binder_info const & bi = binder_info()) {
-        return m_local_gen->mk_tmp_local(type, bi);
-    }
+    expr mk_tmp_local(expr const & type, binder_info const & bi = binder_info());
 
     /** \brief Create a temporary local constant using the given pretty print name.
         The pretty printing name has not semantic significance. */
-    expr mk_tmp_local(name const & pp_name, expr const & type, binder_info const & bi = binder_info()) {
-        return m_local_gen->mk_tmp_local(pp_name, type, bi);
-    }
+    virtual expr mk_tmp_local(name const & pp_name, expr const & type, binder_info const & bi = binder_info()) override;
 
     /** \brief Create a temporary local constant based on the domain of the given binding (lambda/Pi) expression */
     expr mk_tmp_local_from_binding(expr const & b) {
@@ -362,9 +338,7 @@ public:
     }
 
     /** \brief Return true if \c e was created using \c mk_tmp_local */
-    bool is_tmp_local(expr const & e) const {
-        return m_local_gen->is_tmp_local(e);
-    }
+    bool is_tmp_local(expr const & e) const;
 
     /** \brief Return true if \c l represents a universe unification variable.
         \remark This is supposed to be a subset of is_meta(l).
@@ -406,6 +380,13 @@ public:
         whether all internal local constants in v occur in locals.
         The default implementation only checks that. */
     virtual bool validate_assignment(expr const & m, buffer<expr> const & locals, expr const & v);
+    /** \brief Given a metavariable and the value \c v that has already been abstracted.
+        Check if the types match.
+        \remark By checking the types we may be able to assign additional metavariables.
+        The default implementation is:
+
+        return is_def_eq_core(infer_metavar(m), infer(v)); */
+    virtual bool validate_assignment_types(expr const & m, expr const & v);
 
     /** \brief Return the type of a local constant (local or not).
         \remark This method allows the customer to store the type of local constants
@@ -420,9 +401,11 @@ public:
     virtual expr mk_mvar(expr const &) = 0;
 
     /** \brief Save the current assignment and metavariable declarations */
-    virtual void push() = 0;
+    virtual void push_core() = 0;
     /** \brief Retore assignment (inverse for push) */
-    virtual void pop() = 0;
+    virtual void pop_core() = 0;
+    /** \brief Return the number of checkpoints created using \c push and not popped yet. */
+    virtual unsigned get_num_check_points() const = 0;
     /** \brief Keep the changes since last push */
     virtual void commit() = 0;
 
@@ -432,7 +415,11 @@ public:
 
         The default implementation tries to invoke type class resolution to
         assign unassigned metavariables in the given terms. */
-    virtual bool on_is_def_eq_failure(expr &, expr &);
+    virtual bool on_is_def_eq_failure(expr const &, expr const &);
+
+    bool try_unification_hints(expr const &, expr const &);
+    struct unification_hint_fn;
+    friend struct unification_hint_fn;
 
     bool is_assigned(level const & u) const { return static_cast<bool>(get_assignment(u)); }
     bool is_assigned(expr const & m) const { return static_cast<bool>(get_assignment(m)); }
@@ -440,6 +427,9 @@ public:
     bool has_assigned_uvar(level const & l) const;
     bool has_assigned_uvar(levels const & ls) const;
     bool has_assigned_uvar_mvar(expr const & e) const;
+
+    void push();
+    void pop();
 
     /** \brief Expand macro using extension context */
     optional<expr> expand_macro(expr const & m);
@@ -451,16 +441,16 @@ public:
     expr instantiate_uvars_mvars(expr const & e);
 
     /** \brief Put the given term in weak-head-normal-form (modulo is_opaque predicate) */
-    expr whnf(expr const & e);
+    virtual expr whnf(expr const & e) override;
 
     /** \brief Similar to previous method but ignores the is_extra_opaque predicate. */
-    expr relaxed_whnf(expr const & e);
+    virtual expr relaxed_whnf(expr const & e) override;
 
     /** \brief Return true if \c e is a proposition */
     bool is_prop(expr const & e);
 
     /** \brief Infer the type of \c e. */
-    expr infer(expr const & e);
+    virtual expr infer(expr const & e) override;
 
     /** \brief Put \c e in whnf, it is a Pi, then return whnf, otherwise return e */
     expr try_to_pi(expr const & e);
@@ -473,9 +463,9 @@ public:
 
         It is precise if \c e1 and \c e2 do not contain metavariables.
      */
-    bool is_def_eq(expr const & e1, expr const & e2);
+    virtual bool is_def_eq(expr const & e1, expr const & e2) override;
     /** \brief Similar to \c is_def_eq, but sets m_relax_is_opaque */
-    bool relaxed_is_def_eq(expr const & e1, expr const & e2);
+    virtual bool relaxed_is_def_eq(expr const & e1, expr const & e2) override;
 
     /** \brief Return the universe level for type A. If A is not a type return none. */
     optional<level> get_level_core(expr const & A);
@@ -512,8 +502,10 @@ public:
     /** \brief Similar to \c force_assign but sets m_relax_is_opaque */
     bool relaxed_force_assign(expr const & ma, expr const & v);
 
-    /** \brief Clear internal caches used to speedup computation */
+    /** \brief Clear all internal caches used to speedup computation */
     void clear_cache();
+    /** \brief Clear internal type inference cache used to speedup computation */
+    void clear_infer_cache();
 
     /** \brief Update configuration options.
         Return true iff the new options do not change the behavior of the object.
@@ -592,10 +584,12 @@ public:
     virtual expr mk_mvar(expr const &);
     virtual expr infer_local(expr const & e) const { return mlocal_type(e); }
     virtual expr infer_metavar(expr const & e) const { return mlocal_type(e); }
-    virtual void push() { m_trail.push_back(m_assignment); }
-    virtual void pop() { lean_assert(!m_trail.empty()); m_assignment = m_trail.back(); m_trail.pop_back(); }
+    virtual void push_core() { m_trail.push_back(m_assignment); }
+    virtual void pop_core() { lean_assert(!m_trail.empty()); m_assignment = m_trail.back(); m_trail.pop_back(); }
+    virtual unsigned get_num_check_points() const { return m_trail.size(); }
     virtual void commit() { lean_assert(!m_trail.empty()); m_trail.pop_back(); }
     virtual optional<expr> mk_subsingleton_instance(expr const & type);
+    virtual bool validate_assignment_types(expr const & m, expr const & v);
     // TODO(REMOVE)
     bool & get_ignore_if_zero() { return m_ignore_if_zero; }
 };
@@ -609,7 +603,6 @@ class normalizer {
     expr normalize_binding(expr const & e);
     optional<expr> unfold_recursor_core(expr const & f, unsigned i,
                                         buffer<unsigned> const & idxs, buffer<expr> & args, bool is_rec);
-    optional<expr> unfold_recursor_major(expr const & f, unsigned idx, buffer<expr> & args);
     expr normalize_app(expr const & e);
     expr normalize_macro(expr const & e);
     expr normalize(expr e);
@@ -621,6 +614,8 @@ public:
     */
     normalizer(type_context & ctx, bool eta = true, bool nested_prop = false);
     virtual ~normalizer() {}
+
+    optional<expr> unfold_recursor_major(expr const & f, unsigned idx, buffer<expr> & args);
 
     /** \brief Auxiliary predicate for controlling which subterms will be normalized. */
     virtual bool should_normalize(expr const &) const { return true; }

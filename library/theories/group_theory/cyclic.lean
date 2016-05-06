@@ -22,7 +22,7 @@ include ambG
 
 lemma pow_mod {a : A} {n m : nat} : a ^ m = 1 → a ^ n = a ^ (n % m) :=
 assume Pid,
-assert a ^ (n / m * m) = 1, from calc
+have a ^ (n / m * m) = 1, from calc
   a ^ (n / m * m) = a ^ (m * (n / m))   : by rewrite (mul.comm (n / m) m)
                 ... = (a ^ m) ^ (n / m) : by rewrite pow_mul
                 ... = 1 ^ (n / m)       : by rewrite Pid
@@ -64,13 +64,13 @@ include deceqA
 
 lemma exists_pow_eq_one (a : A) : ∃ n, n < card A ∧ a ^ (succ n) = 1 :=
 let f := (λ i : fin (succ (card A)), a ^ i) in
-assert Pninj : ¬(injective f), from assume Pinj,
+have Pninj : ¬(injective f), from assume Pinj,
   absurd (card_le_of_inj _ _ (exists.intro f Pinj))
     (begin rewrite [card_fin], apply not_succ_le_self end),
 obtain i₁ P₁, from exists_not_of_not_forall Pninj,
 obtain i₂ P₂, from exists_not_of_not_forall P₁,
-obtain Pfe Pne, from iff.elim_left not_implies_iff_and_not P₂,
-assert Pvne : val i₁ ≠ val i₂, from assume Pveq, absurd (eq_of_veq Pveq) Pne,
+obtain Pfe Pne, from and_not_of_not_implies P₂,
+have Pvne : val i₁ ≠ val i₂, from assume Pveq, absurd (eq_of_veq Pveq) Pne,
 exists.intro (pred (dist i₁ i₂)) (begin
   rewrite [succ_pred_of_pos (dist_pos_of_ne Pvne)], apply and.intro,
     apply lt_of_succ_lt_succ,
@@ -123,7 +123,7 @@ take g, assume Pgin,
 obtain n Plt Pe, from exists_pow_eq_one a,
 obtain i Pilt Pig, from of_mem_sep Pgin,
 let ni := -(mk_mod n i) in
-assert Pinv : g*a^ni = 1, by
+have Pinv : g*a^ni = 1, by
   rewrite [-Pig, mk_pow_mod Pe, -(pow_madd Pe), add.right_inv],
 begin
   rewrite [inv_eq_of_mul_eq_one Pinv],
@@ -144,7 +144,7 @@ lemma mem_cyc (a : A) : ∀ {n : nat}, a^n ∈ cyc a
 
 lemma order_le {a : A} {n : nat} : a^(succ n) = 1 → order a ≤ succ n :=
 assume Pe, let s := image (pow_nat a) (upto (succ n)) in
-assert Psub: cyc a ⊆ s, from subset_of_forall
+have Psub: cyc a ⊆ s, from subset_of_forall
   (take g, assume Pgin, obtain i Pilt Pig, from of_mem_sep Pgin, begin
   rewrite [-Pig, pow_mod Pe],
   apply mem_image,
@@ -170,7 +170,7 @@ have    dist i j = 0,     from
 eq_of_veq (eq_of_dist_eq_zero this)
 
 lemma cyc_eq_cyc (a : A) (n : nat) : cyc_pow_fin a n = cyc a :=
-assert Psub : cyc_pow_fin a n ⊆ cyc a, from subset_of_forall
+have Psub : cyc_pow_fin a n ⊆ cyc a, from subset_of_forall
   (take g, assume Pgin,
   obtain i Pin Pig, from exists_of_mem_image Pgin, by rewrite [-Pig]; apply mem_cyc),
 eq_of_card_eq_of_subset (begin apply eq.trans,
@@ -193,14 +193,16 @@ lemma order_of_min_pow {a : A} {n : nat}
   (Pone : a^(succ n) = 1) (Pmin : ∀ i, i < n → a^(succ i) ≠ 1) : order a = succ n :=
 or.elim (eq_or_lt_of_le (order_le Pone)) (λ P, P)
   (λ P : order a < succ n, begin
-  assert Pn : a^(order a) ≠ 1,
+  have Pn : a^(order a) ≠ 1,
+  begin
     rewrite [-(succ_pred_of_pos (order_pos a))],
     apply Pmin, apply nat.lt_of_succ_lt_succ,
-    rewrite [succ_pred_of_pos !order_pos], assumption,
+    rewrite [succ_pred_of_pos !order_pos], assumption
+  end,
   exact absurd (pow_order a) Pn end)
 
 lemma order_dvd_of_pow_eq_one {a : A} {n : nat} (Pone : a^n = 1) : order a ∣ n :=
-assert Pe : a^(n % order a) = 1, from
+have Pe : a^(n % order a) = 1, from
   begin
     revert Pone,
     rewrite [eq_div_mul_add_mod n (order a) at {1}, pow_add, mul.comm _ (order a), pow_mul, pow_order, one_pow, one_mul],
@@ -230,7 +232,7 @@ end
 definition pow_fin_is_iso (a : A) : is_iso_class (pow_fin' a) :=
 is_iso_class.mk (pow_fin_hom a)
   (have H : injective (λ (i : fin (order a)), a ^ (val i + 0)), from pow_fin_inj a 0,
-    begin+ rewrite [↑pow_fin', succ_pred_of_pos !order_pos]; exact H end)
+    begin rewrite [↑pow_fin', succ_pred_of_pos !order_pos]; exact H end)
 
 end cyclic
 
@@ -243,7 +245,7 @@ local attribute group_of_add_group [instance]
 lemma pow_eq_mul {n : nat} {i : fin (succ n)} : ∀ {k : nat}, i^k = mk_mod n (i*k)
 | 0        := by rewrite [pow_zero]
 | (succ k) := begin
-  assert Psucc : i^(succ k) = madd (i^k) i, apply pow_succ',
+  have Psucc : i^(succ k) = madd (i^k) i, by apply pow_succ',
   rewrite [Psucc, pow_eq_mul],
   apply eq_of_veq,
   rewrite [mul_succ, val_madd, ↑mk_mod, mod_add_mod]
@@ -268,7 +270,7 @@ lemma rotl_zero : ∀ {n : nat}, @rotl n 0 = id
 lemma rotl_id : ∀ {n : nat}, @rotl n n = id
 | 0        := funext take i, elim0 i
 | (nat.succ n) :=
-  assert P : mk_mod n (n * succ n) = mk_mod n 0,
+  have P : mk_mod n (n * succ n) = mk_mod n 0,
     from eq_of_veq (by rewrite [↑mk_mod, mul_mod_left]),
   begin rewrite [rotl_succ', P], apply rotl_zero end
 
@@ -290,7 +292,7 @@ lemma rotl_rotr : ∀ {n : nat} (m : nat), (@rotl n m) ∘ (rotr m) = id
 | (nat.succ n) := take m, funext take i, calc (mk_mod n (n*m)) + (-(mk_mod n (n*m)) + i) = i : add_neg_cancel_left
 
 lemma rotl_succ {n : nat} : (rotl 1) ∘ (@succ n) = lift_succ :=
-funext (take i, eq_of_veq (begin rewrite [↑compose, ↑rotl, ↑madd, mul_one n, ↑mk_mod, mod_add_mod, ↑lift_succ, val_succ, -succ_add_eq_succ_add, add_mod_self_left, mod_eq_of_lt (lt.trans (is_lt i) !lt_succ_self), -val_lift] end))
+funext (take i, eq_of_veq (begin rewrite [↑comp, ↑rotl, ↑madd, mul_one n, ↑mk_mod, mod_add_mod, ↑lift_succ, val_succ, -succ_add_eq_succ_add, add_mod_self_left, mod_eq_of_lt (lt.trans (is_lt i) !lt_succ_self), -val_lift] end))
 
 definition list.rotl {A : Type} : ∀ l : list A, list A
 | []     := []
@@ -305,7 +307,7 @@ lemma rotl_map {A B : Type} {f : A → B} : ∀ {l : list A}, list.rotl (map f l
 lemma rotl_eq_rotl : ∀ {n : nat}, map (rotl 1) (upto n) = list.rotl (upto n)
 | 0        := rfl
 | (succ n) := begin
-  rewrite [upto_step at {1}, upto_succ, rotl_cons, map_append],
+  rewrite [upto_step at {1}, fin.upto_succ, rotl_cons, map_append],
   congruence,
     rewrite [map_map], congruence, exact rotl_succ,
     rewrite [map_singleton], congruence, rewrite [↑rotl, mul_one n, ↑mk_mod, ↑maxi, ↑madd],
@@ -334,7 +336,7 @@ lemma rotl_seq_ne_id : ∀ {n : nat}, (∃ a b : A, a ≠ b) → ∀ i, i < n �
   assume Peq, absurd (congr_fun Peq f) P
 
 lemma rotr_rotl_fun {n : nat} (m : nat) (f : seq A n) : rotr_fun m (rotl_fun m f) = f :=
-calc f ∘ (rotl m) ∘ (rotr m) = f ∘ ((rotl m) ∘ (rotr m)) : by rewrite -compose.assoc
+calc f ∘ (rotl m) ∘ (rotr m) = f ∘ ((rotl m) ∘ (rotr m)) : by rewrite -comp.assoc
                          ... = f ∘ id                    : by rewrite (rotl_rotr m)
 
 lemma rotl_fun_inj {n : nat} {m : nat} : @injective (seq A n) (seq A n) (rotl_fun m) :=
@@ -363,7 +365,7 @@ include finA deceqA
 
 lemma rotl_perm_mul {i j : nat} : (rotl_perm A n i) * (rotl_perm A n j) = rotl_perm A n (j+i) :=
 eq_of_feq (funext take f, calc
-  f ∘ (rotl j) ∘ (rotl i) = f ∘ ((rotl j) ∘ (rotl i)) : by rewrite -compose.assoc
+  f ∘ (rotl j) ∘ (rotl i) = f ∘ ((rotl j) ∘ (rotl i)) : by rewrite -comp.assoc
                       ... = f ∘ (rotl (j+i))          : by rewrite rotl_compose)
 
 lemma rotl_perm_pow_eq : ∀ {i : nat}, (rotl_perm A n 1) ^ i = rotl_perm A n i
