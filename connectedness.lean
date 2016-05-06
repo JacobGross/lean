@@ -1,5 +1,6 @@
 import data.set theories.topology.basic data.bool theories.topology.continuous theories.topology.order_topology
-open algebra eq.ops set topology nat bool order_topology
+algebra.interval
+open algebra eq.ops set topology nat bool order_topology interval
 
 -- shorthanded interated connectives
 
@@ -42,7 +43,7 @@ exists.intro x (exists.intro y H)
 - move this to the bool file
 
 - this was necessary so that we can put the linear order topology on 
-the booleans to make sense of a continuous function f : set X → bool
+the booleans to make sense of a continuous function f : X → bool
 
 -/
 
@@ -128,6 +129,33 @@ definition linear_strong_order_pair.of_bool [trans_instance] :
  lt_irrefl       := bool.lt_irrefl,
  le_total        := bool.le_total⦄
 
+theorem open_tt :
+  Open '{tt} :=
+have '(ff, ∞) = '{tt}, from ext(take b, iff.intro
+  (assume H,
+   have bool.lt ff b, from H,
+   have b ≠ ff, from λ H', absurd H (H' ▸ (bool.lt_irrefl b)),
+   or.elim (dichotomy b)
+     (suppose b = ff, !not.elim `b ≠ ff` this)
+     (suppose b = tt, this ▸ !mem_singleton))
+  (assume H, ((iff.elim_left !mem_singleton_iff) H)⁻¹ ▸ (by trivial))),
+show _, from this ▸ Open_Ioi
+
+theorem open_ff :
+  Open '{ff} :=
+have '(tt, ∞) = '{ff}, from ext(take b, iff.intro
+  (sorry)
+  (sorry)),
+show _, from this ▸ Open_Ioi
+
+theorem closed_tt :
+  closed '{tt} :=
+sorry
+
+theorem closed_ff :
+  closed '{ff} :=
+sorry
+
 end bool
 
 -- connectedness begins here
@@ -157,6 +185,10 @@ obtain b [(bB : b ∈ B) (bx : b ∈ '{x})], from exists_mem_of_ne_empty Bs,
 have xB : x ∈ B, from mem_mem_singleton bB bx,
 absurd (and.intro2' xA xB !mem_singleton) (ABs⁻¹ ▸ !not_mem_empty)
 
+theorem connected_no_separator (s : set X) :
+  ∀ U V, connected s → Open U → Open V → U ∩ V ∩ s = ∅ → s ⊆ U ∪ V → U ∩ s = ∅ ∨ V ∩ s = ∅ :=
+sorry
+
 section
  open classical
 
@@ -178,7 +210,7 @@ have x ∉ b, from not.intro(
   show false, from absurd this (abs⁻¹ ▸ !not_mem_empty)),
 show _, from ne_empty_of_mem (and.intro this xs)
 
-theorem connected_closed (s : set X) :
+/-theorem connected_closed (s : set X) :
   connected s → ¬(∃ A B, closed A ∧ closed B ∧ s ⊆ A ∪ B ∧ A ∩ B ∩ s = ∅ ∧ A ∩ s ≠ ∅ ∧ B ∩ s ≠ ∅) :=
 assume H, assume H',
 obtain A B [clA clB sAB ABs As Bs], from H',
@@ -331,11 +363,40 @@ have H4 : (-t) ∩ univ ≠ ∅, from not.intro(
   show false, from absurd ( !compl_compl ▸ this) `t ≠ univ`),
 have H5 : t ∩ (-t) ∩ univ = ∅, by rewrite[inter_univ, inter_compl_self],
 have H6 : univ ⊆ t ∪ (-t), by rewrite[union_compl_self]; exact λx H, H,
-show false, from H t (-t) H1 H2 H3 H4 H5 H6
+show false, from H t (-t) H1 H2 H3 H4 H5 H6-/
 
 theorem connected_const (S : set X) : 
   connected S → (∀ P : X → bool, continuous_on P S → ∃ c, ∀₀ s ∈ S, P s = c) :=
-sorry
+suppose connected S, take P : X → bool,
+suppose ctsP : continuous_on P S,
+obtain t [(Opt : Open t) (Ht : t ∩ S = preimage P '{tt} ∩ S)], from ctsP open_tt,
+obtain f [(Opf : Open f) (Hf : f ∩ S = preimage P '{ff} ∩ S)], from ctsP open_ff,
+have Stf : S ⊆ t ∪ f, from sorry,
+have t ∩ f ∩ S = ∅, from sorry,
+have t ∩ S = ∅ ∨ f ∩ S = ∅, from connected_no_separator S t f `connected S` Opt Opf this Stf,
+or.elim this
+  (assume H,
+    have ∀₀ s ∈ S, P s = ff, from 
+      take s, assume sS,
+      show P s = ff, from or.elim (dichotomy (P s))
+        (suppose P s = ff, this)
+        (suppose P s = tt, 
+          have P s ∈ '{tt}, from this ▸ !mem_singleton,
+          have s ∈ preimage P '{tt}, from mem_preimage this,
+          have s ∈ preimage P '{tt} ∩ S, from and.intro this sS,
+          show _, from !not.elim (ne_empty_of_mem this) (Ht ▸ H)),
+    show _, from exists.intro ff this)
+  (assume H,
+    have ∀₀ s ∈ S, P s = tt, from 
+      take s, assume sS,
+      show P s = tt, from or.elim (dichotomy (P s))
+        (suppose P s = ff, 
+          have P s ∈ '{ff}, from this ▸ !mem_singleton,
+          have s ∈ preimage P '{ff}, from mem_preimage this,
+          have s ∈ preimage P '{ff} ∩ S, from and.intro this sS,
+          show _, from !not.elim (ne_empty_of_mem this) (Hf ▸ H))
+        (suppose P s = tt, this),
+    show _, from exists.intro tt this)
 
 theorem const_connected (S : set X) : 
  (∀ P : X → bool, continuous_on P S → ∃ c, ∀₀ s ∈ S, P s = c) → connected S :=
